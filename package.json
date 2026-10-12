@@ -3,5 +3,23 @@
   "version": "1.0.0",
   "description": "A local, offline puzzle game about solving petty crimes with SQL",
   "private": true,
-  "scripts": { "test": "node tests/verify-cases.js" }
+  "main": "main.js",
+  "author": "SQL Detective",
+  "scripts": {
+    "start": "electron .",
+    "test": "node tests/verify-cases.js",
+    "dist": "electron-builder --win portable"
+  },
+  "devDependencies": {
+    "electron": "33.4.11",
+    "electron-builder": "25.1.8"
+  },
+  "build": {
+    "appId": "local.sqldetective.game",
+    "productName": "SQL Detective",
+    "files": ["index.html", "main.js", "css/**", "js/**", "build/icon.png"],
+    "directories": { "output": "dist", "buildResources": "build" },
+    "win": { "target": "portable", "icon": "build/icon.png" },
+    "portable": { "artifactName": "SQL-Detective.exe" }
+  }
 }

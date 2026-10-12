@@ -9,6 +9,15 @@
 Просто откройте файл **`index.html`** в браузере (Chrome, Firefox, Edge, Safari) — двойным кликом.
 Сервер не нужен. Прогресс сохраняется в браузере (localStorage).
 
+## Запуск как .exe (Windows)
+
+* **Готовая сборка:** в GitHub Actions запустите workflow «Build Windows exe» (вкладка Actions → Run workflow) —
+  в артефактах появится одиночный `SQL-Detective.exe`.
+* **Собрать у себя:** установите [Node.js](https://nodejs.org), затем дважды кликните `build-exe.bat` —
+  готовый `dist\SQL-Detective.exe` появится в папке проекта.
+* **Запустить в окне без сборки:** `run-game.bat` (или `npm install` и `npm start`).
+* `F11` — полноэкранный режим.
+
 ## Как играть
 
 1. На рабочем столе откройте **messages** — инструктаж от помощника, офицера Спада.
