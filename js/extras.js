@@ -14,6 +14,7 @@
     fig_table: 'table', fig_col: 'column', fig_row: 'row = one record', fig_cell: 'a value',
     fig_all: 'all rows', fig_match: 'matching rows', fig_where: 'WHERE',
     fig_a: 'loans', fig_b: 'members', fig_link: 'same ID',
+    i_music: 'music player', w_music: 'Music Player', mp_now: 'NOW PLAYING', mp_idle: 'Press ▶ to start the music', mp_vol: 'Volume', mp_shuffle: 'Shuffle', mp_repeat: 'Repeat this track', mp_prev: 'Previous', mp_next: 'Next', mp_play: 'Play / Pause', mp_stop: 'Stop', mp_list: 'Playlist',
     s_bg: 'Wallpaper', s_bg_tip: 'Pick a desktop background',
     bg_teal: 'Classic teal', bg_sunset: 'Sunset', bg_night: 'Night city', bg_blueprint: 'Blueprint', bg_candy: 'Candy dots',
     bg_forest: 'Green hills', bg_checker: 'Checkerboard', bg_terminal: 'Terminal', bg_sky: 'Blue sky', bg_cork: 'Cork board'
@@ -28,6 +29,7 @@
     fig_table: 'таблица', fig_col: 'столбец', fig_row: 'строка = одна запись', fig_cell: 'значение',
     fig_all: 'все строки', fig_match: 'подходящие строки', fig_where: 'WHERE',
     fig_a: 'loans', fig_b: 'members', fig_link: 'одинаковый ID',
+    i_music: 'плеер', w_music: 'Музыкальный плеер', mp_now: 'СЕЙЧАС ИГРАЕТ', mp_idle: 'Нажмите ▶, чтобы включить музыку', mp_vol: 'Громкость', mp_shuffle: 'Вперемешку', mp_repeat: 'Повторять трек', mp_prev: 'Назад', mp_next: 'Дальше', mp_play: 'Играть / Пауза', mp_stop: 'Стоп', mp_list: 'Плейлист',
     s_bg: 'Обои', s_bg_tip: 'Выберите фон рабочего стола',
     bg_teal: 'Классика', bg_sunset: 'Закат', bg_night: 'Ночной город', bg_blueprint: 'Чертёж', bg_candy: 'Конфетный горох',
     bg_forest: 'Зелёные холмы', bg_checker: 'Шахматная доска', bg_terminal: 'Терминал', bg_sky: 'Голубое небо', bg_cork: 'Пробковая доска'

@@ -18,7 +18,7 @@
     set(k, v) { try { localStorage.setItem('sqld.' + k, JSON.stringify(v)); } catch (e) { /* private mode */ } }
   };
   const I18N = window.SQLD_I18N;
-  const settings = Object.assign({ sound: true, crt: true, bg: 'teal', lang: ((navigator.language || 'en').toLowerCase().indexOf('ru') === 0) ? 'ru' : 'en' }, store.get('settings', {}));
+  const settings = Object.assign({ sound: true, crt: true, bg: 'teal', musicVol: 0.6, shuffle: false, repeat: false, lang: ((navigator.language || 'en').toLowerCase().indexOf('ru') === 0) ? 'ru' : 'en' }, store.get('settings', {}));
   function t(k) {
     const a = arguments, d = (I18N[settings.lang] || I18N.en).ui;
     const s0 = d[k] != null ? d[k] : (I18N.en.ui[k] != null ? I18N.en.ui[k] : k);
@@ -421,6 +421,67 @@
       show(cur);
     }, { nob: true, w: 880, h: 540, x: 215, y: 24 });
   }
+  /* ---- music player ---- */
+  const Music = window.SQLD_MUSIC;
+  Music.volume = settings.musicVol; Music.shuffle = settings.shuffle; Music.repeat = settings.repeat;
+  const mmss = (s) => { s = Math.max(0, Math.floor(s)); return Math.floor(s / 60) + ':' + ('0' + (s % 60)).slice(-2); };
+  const tname = (T) => T.name[settings.lang] || T.name.en;
+  const tmood = (T) => T.mood[settings.lang] || T.mood.en;
+  function openMusic() {
+    openWin('music', t('w_music'), (b) => {
+      b.innerHTML = '<div class="mp"><div class="mp-lcd"><div class="mp-now"></div><div class="mp-title"></div><div class="mp-sub"></div><div class="mp-time"></div></div>' +
+        '<canvas class="mp-vis" width="480" height="70"></canvas>' +
+        '<div class="mp-ctl"><button class="btn" data-a="prev" title="' + esc(t('mp_prev')) + '">⏮</button><button class="btn big" data-a="play" title="' + esc(t('mp_play')) + '">▶</button>' +
+        '<button class="btn" data-a="stop" title="' + esc(t('mp_stop')) + '">■</button><button class="btn" data-a="next" title="' + esc(t('mp_next')) + '">⏭</button>' +
+        '<button class="btn tgl" data-a="shuffle" title="' + esc(t('mp_shuffle')) + '">🔀</button><button class="btn tgl" data-a="repeat" title="' + esc(t('mp_repeat')) + '">🔁</button>' +
+        '<label class="mp-vol">🔊 <input type="range" min="0" max="100" data-a="vol"></label></div>' +
+        '<div class="mp-list-h">' + esc(t('mp_list')) + '</div><div class="mp-list"></div></div>';
+      const lcd = { now: $('.mp-now', b), title: $('.mp-title', b), sub: $('.mp-sub', b), time: $('.mp-time', b) };
+      const play = $('[data-a=play]', b), vol = $('[data-a=vol]', b), list = $('.mp-list', b), cv = $('.mp-vis', b), g2 = cv.getContext('2d');
+      vol.value = Math.round(Music.volume * 100);
+      Music.tracks.forEach((T, i) => {
+        const row = el('div', { className: 'mp-row', 'data-i': i }, '<span class="n">' + (i + 1) + '</span><span class="nm">' + esc(tname(T)) + '</span><span class="md">' + esc(tmood(T)) + '</span><span class="du">' + mmss(Music.duration(i)) + '</span>');
+        row.addEventListener('click', () => { sfx.click(); Music.play(i); });
+        list.appendChild(row);
+      });
+      const refresh = () => {
+        const T = Music.idx >= 0 ? Music.tracks[Music.idx] : null;
+        lcd.now.textContent = T ? t('mp_now') : '';
+        lcd.title.textContent = T ? tname(T) : t('mp_idle');
+        lcd.sub.textContent = T ? tmood(T) : '';
+        play.textContent = Music.playing ? '❚❚' : '▶';
+        $('[data-a=shuffle]', b).classList.toggle('on', Music.shuffle); $('[data-a=repeat]', b).classList.toggle('on', Music.repeat);
+        list.querySelectorAll('.mp-row').forEach((r) => r.classList.toggle('on', +r.dataset.i === Music.idx));
+      };
+      const listener = () => { if (wins.music) refresh(); };
+      Music.onChange(listener);
+      b.addEventListener('click', (e) => {
+        const a = e.target.dataset && e.target.dataset.a; if (!a) return;
+        if (a === 'play') Music.toggle(); else if (a === 'stop') Music.stop();
+        else if (a === 'next') Music.play(Music.idx < 0 ? 0 : (Music.idx + 1) % Music.tracks.length);
+        else if (a === 'prev') Music.idx < 0 ? Music.play(Music.tracks.length - 1) : Music.prev();
+        else if (a === 'shuffle') { Music.shuffle = !Music.shuffle; settings.shuffle = Music.shuffle; saveSettings(); refresh(); }
+        else if (a === 'repeat') { Music.repeat = !Music.repeat; settings.repeat = Music.repeat; saveSettings(); refresh(); }
+        if (a !== 'vol') sfx.click();
+      });
+      vol.addEventListener('input', () => { Music.setVolume(vol.value / 100); settings.musicVol = Music.volume; saveSettings(); });
+      const data = new Uint8Array(64);
+      (function frame() {
+        if (!wins.music || wins.music.body !== b) return;
+        lcd.time.textContent = Music.idx >= 0 ? mmss(Music.elapsed()) + ' / ' + mmss(Music.duration()) : '';
+        g2.clearRect(0, 0, cv.width, cv.height);
+        if (Music.analyser && Music.playing) Music.analyser.getByteFrequencyData(data); else data.fill(0);
+        const bw = cv.width / 32;
+        for (let i = 0; i < 32; i++) {
+          const v = data[i + 1] / 255, h = Math.max(3, v * cv.height);
+          g2.fillStyle = 'hsl(' + (150 + i * 4) + ',90%,' + (45 + v * 20) + '%)';
+          g2.fillRect(i * bw + 2, cv.height - h, bw - 4, h);
+        }
+        requestAnimationFrame(frame);
+      })();
+      refresh();
+    }, { w: 540, h: 530, x: 330, y: 20 });
+  }
   function openBrowser() {
     openWin('web', t('w_browser'), (b) => {
       const sites = C().sites; const hist = ['home'];
@@ -576,6 +637,7 @@
     addIcon('clues', t('i_clues'), openClues);
     addIcon('manual', t('i_manual'), openManual);
     if (c.sites) addIcon('web', t('i_web'), openBrowser);
+    addIcon('music', t('i_music'), openMusic);
     addIcon('search', t('i_search'), () => openSearch());
     Object.keys(schema()).forEach((tb) => addIcon('table', tb, () => openTable(tb)));
     addIcon('arrest', t('i_arrest'), openArrest);

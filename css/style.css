@@ -226,3 +226,24 @@ table.data td.num { text-align: right; }
 .swatch:hover { transform: translateY(-2px); }
 .swatch.on { outline: 4px solid #fff3a6; outline-offset: 1px; border-color: var(--navy); }
 .icon { text-shadow: 1px 1px 0 #000a, 0 0 4px #0008; }
+
+/* ---------- music player ---------- */
+.mp { display: flex; flex-direction: column; gap: 8px; padding: 10px; height: 100%; user-select: none; }
+.mp-lcd { background: #06140c; border: 3px solid; border-color: var(--lav-dark) #fff #fff var(--lav-dark); color: #4dff9a; font: 14px var(--mono); padding: 8px 12px; position: relative; text-shadow: 0 0 6px #4dff9a88; min-height: 84px; }
+.mp-lcd .mp-now { font-size: 11px; letter-spacing: 3px; opacity: .75; min-height: 14px; }
+.mp-lcd .mp-title { font: bold 24px var(--mono); margin: 2px 0; }
+.mp-lcd .mp-sub { font-size: 14px; opacity: .8; }
+.mp-lcd .mp-time { position: absolute; right: 12px; top: 8px; font: bold 18px var(--mono); }
+.mp-vis { width: 100%; height: 70px; background: #06140c; border: 3px solid; border-color: var(--lav-dark) #fff #fff var(--lav-dark); }
+.mp-ctl { display: flex; align-items: center; gap: 6px; }
+.mp-ctl .btn { min-width: 40px; padding: 5px 8px; font-size: 16px; }
+.mp-ctl .btn.big { min-width: 56px; font-size: 20px; padding: 3px 10px; }
+.mp-ctl .btn.tgl.on { background: #fff3a6; border-color: var(--lav-dark) #fff #fff var(--lav-dark); }
+.mp-vol { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 16px; }
+.mp-vol input { width: 110px; }
+.mp-list-h { font: bold 13px var(--ui); letter-spacing: 2px; text-transform: uppercase; color: #5a4a70; }
+.mp-list { flex: 1; overflow: auto; background: #fff; border: 2px solid; border-color: var(--lav-dark) #fff #fff var(--lav-dark); }
+.mp-row { display: grid; grid-template-columns: 26px 1fr 170px 44px; gap: 6px; padding: 6px 8px; font: 15px var(--ui); cursor: pointer; border-bottom: 1px solid #eee4f7; }
+.mp-row:hover { background: #f3ebfb; }
+.mp-row.on { background: var(--navy); color: #fff; }
+.mp-row .n { opacity: .6; } .mp-row .md { font-size: 13px; opacity: .75; align-self: center; } .mp-row .du { text-align: right; font-family: var(--mono); font-size: 13px; align-self: center; }
