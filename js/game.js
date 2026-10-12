@@ -18,7 +18,7 @@
     set(k, v) { try { localStorage.setItem('sqld.' + k, JSON.stringify(v)); } catch (e) { /* private mode */ } }
   };
   const I18N = window.SQLD_I18N;
-  const settings = Object.assign({ sound: true, crt: true, lang: ((navigator.language || 'en').toLowerCase().indexOf('ru') === 0) ? 'ru' : 'en' }, store.get('settings', {}));
+  const settings = Object.assign({ sound: true, crt: true, bg: 'teal', lang: ((navigator.language || 'en').toLowerCase().indexOf('ru') === 0) ? 'ru' : 'en' }, store.get('settings', {}));
   function t(k) {
     const a = arguments, d = (I18N[settings.lang] || I18N.en).ui;
     const s0 = d[k] != null ? d[k] : (I18N.en.ui[k] != null ? I18N.en.ui[k] : k);
@@ -32,7 +32,11 @@
   function MN(k) { return (settings.lang === 'ru' && I18N.ru.manual[k]) || MANUAL[k]; }
   const C = () => loc(G.c);
   let progress = store.get('progress', { done: {}, unlockAll: false });
-  function saveSettings() { store.set('settings', settings); document.body.classList.toggle('crt', settings.crt); }
+  function applyBg() {
+    const w = window.SQLD_WALLPAPERS.find((x) => x.id === settings.bg) || window.SQLD_WALLPAPERS[0];
+    ['#desktop', '#screen-cases'].forEach((q) => { const e = $(q); if (e) e.style.background = w.css; });
+  }
+  function saveSettings() { store.set('settings', settings); document.body.classList.toggle('crt', settings.crt); applyBg(); }
   function saveProgress() { store.set('progress', progress); }
 
   /* ------------------------------------------------------------ sound */
@@ -381,15 +385,41 @@
   function openManual() {
     openWin('manual', t('w_manual'), (b) => {
       const pages = G.c.manual;
-      b.innerHTML = '<div class="manual"><nav></nav><div class="page"></div></div>';
-      const nav = $('nav', b), page = $('.page', b);
-      function show(k) {
-        page.innerHTML = '<h3>' + esc(MN(k).title) + '</h3>' + MN(k).html;
-        nav.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x.dataset.k === k));
+      const X = (window.SQLD_MANUAL_X[settings.lang] || window.SQLD_MANUAL_X.en);
+      const TABC = ['#c0272d', '#e08a1e', '#d9b800', '#3d9a52', '#2f7fc0', '#8e5aa8'];
+      b.innerHTML = '<div class="book"><div class="tabs"></div><div class="sheet"><div class="pg"></div><div class="bnav"><button class="btn" data-a="prev"></button><span class="pgno"></span><button class="btn" data-a="next"></button></div></div></div>';
+      const tabs = $('.tabs', b), pg = $('.pg', b), prev = $('[data-a=prev]', b), next = $('[data-a=next]', b), pgno = $('.pgno', b);
+      let cur = pages.length - 1; // -1 = cover
+      function show(i) {
+        cur = i;
+        const k = pages[i];
+        pg.classList.toggle('cover', i < 0);
+        if (i < 0) {
+          pg.innerHTML = '<div class="cv"><div class="cv-badge">' + CH.spud('happy') + '</div><h2>' + t('man_cover_title') + '</h2><div class="cv-sub">' + t('man_cover_sub') + '</div>' +
+            '<div class="cv-own">' + esc(t('man_owner')) + ' <span></span></div><div class="cv-note">' + esc(t('man_cover_note')) + '</div></div>';
+        } else {
+          const m = MN(k), x = X[k] || {};
+          let h = '<div class="kick">' + esc(t('man_chapter', i + 1)) + '</div><h3>' + esc(m.title) + '</h3>';
+          if (x.fig && window.SQLD_FIGURES[x.fig]) h += '<div class="figure">' + window.SQLD_FIGURES[x.fig](t) + '</div>';
+          h += '<div class="body">' + m.html + '</div>';
+          if (x.tip) h += '<div class="tipbox"><div class="face">' + CH.spud('happy') + '</div><div class="tt"><b>' + esc(t('man_tip')) + '</b>' + esc(x.tip) + '</div></div>';
+          if (x.recap) h += '<div class="recap"><h4>' + esc(t('man_recap')) + '</h4><ul>' + x.recap.map((r) => '<li>' + esc(r) + '</li>').join('') + '</ul></div>';
+          pg.innerHTML = h;
+          pg.querySelectorAll('pre').forEach((pre) => { pre.innerHTML = highlight(pre.textContent).replace(/\n$/, ''); });
+        }
+        pg.scrollTop = 0;
+        tabs.querySelectorAll('button').forEach((x) => x.classList.toggle('on', +x.dataset.i === i));
+        prev.style.visibility = i < 0 ? 'hidden' : 'visible'; next.style.visibility = i >= pages.length - 1 ? 'hidden' : 'visible';
+        prev.textContent = t('man_prev'); next.textContent = t('man_next');
+        pgno.textContent = i < 0 ? '' : '— ' + t('man_page', i + 2) + ' —';
       }
-      pages.forEach((k, i) => { const bt = el('button', { 'data-k': k }, (i + 1) + '. ' + esc(MN(k).title)); bt.addEventListener('click', () => { sfx.click(); show(k); }); nav.appendChild(bt); });
-      show(pages[pages.length - 1]);
-    }, { nob: true, w: 760, h: 440, x: 215, y: 40 });
+      const addTab = (i, label, color) => { const bt = el('button', { 'data-i': i, style: 'background:' + color }, esc(label)); bt.addEventListener('click', () => { sfx.click(); show(i); }); tabs.appendChild(bt); };
+      addTab(-1, t('man_cover_tab'), '#2c4a8a');
+      pages.forEach((k, i) => addTab(i, (i + 1) + '. ' + MN(k).title, TABC[i % TABC.length]));
+      prev.addEventListener('click', () => { sfx.click(); show(cur - 1); });
+      next.addEventListener('click', () => { sfx.click(); show(cur + 1); });
+      show(cur);
+    }, { nob: true, w: 880, h: 540, x: 215, y: 24 });
   }
   function openBrowser() {
     openWin('web', t('w_browser'), (b) => {
@@ -420,8 +450,16 @@
     openWin('settings', t('w_settings'), (b) => {
       b.innerHTML = '<div class="paper" style="font:16px/2 var(--ui)"><label><input type="checkbox" data-s="sound"> ' + esc(t('s_sound')) + '</label><br><label><input type="checkbox" data-s="crt"> ' + esc(t('s_crt')) + '</label><br>' +
         '<label>' + esc(t('s_lang')) + ': <select data-s="lang"><option value="en">English</option><option value="ru">Русский</option></select></label><br>' +
+        '<div class="bg-h">' + esc(t('s_bg')) + '</div><div class="swatches"></div>' +
         '<button class="btn" data-a="unlock">' + esc(t('s_unlock')) + '</button> <button class="btn" data-a="reset">' + esc(t('s_reset')) + '</button></div>';
       $('[data-s=sound]', b).checked = settings.sound; $('[data-s=crt]', b).checked = settings.crt; $('[data-s=lang]', b).value = settings.lang;
+      const sw = $('.swatches', b);
+      window.SQLD_WALLPAPERS.forEach((w) => {
+        const d = el('div', { className: 'swatch' + (settings.bg === w.id ? ' on' : ''), title: t('bg_' + w.id) });
+        d.style.background = w.css;
+        d.addEventListener('click', () => { sfx.click(); settings.bg = w.id; saveSettings(); sw.querySelectorAll('.swatch').forEach((x) => x.classList.toggle('on', x === d)); });
+        sw.appendChild(d);
+      });
       b.addEventListener('change', (e) => {
         const k = e.target.dataset.s; if (!k) return;
         if (k === 'lang') { setLang(e.target.value); return; }
@@ -432,7 +470,7 @@
         if (a === 'unlock') { progress.unlockAll = true; saveProgress(); toast(t('unlocked_toast'), true); }
         if (a === 'reset' && confirm(t('reset_confirm'))) { progress = { done: {}, unlockAll: false }; saveProgress(); toast(t('reset_toast')); }
       });
-    }, { nob: true, w: 420, h: 230, x: 400, y: 150 });
+    }, { nob: true, w: 460, h: 350, x: 400, y: 90 });
   }
 
   /* ------------------------------------------------------------ arrest */
