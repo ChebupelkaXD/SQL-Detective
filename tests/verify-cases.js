@@ -3,6 +3,8 @@
 const path = require('path');
 const initSqlJs = require(path.join(__dirname, '..', 'js', 'sql-asm.js'));
 const { CASES, MANUAL } = require(path.join(__dirname, '..', 'js', 'cases.js'));
+globalThis.window = globalThis; require(path.join(__dirname, '..', 'js', 'i18n.js'));
+const RU = globalThis.SQLD_I18N.ru;
 
 function loadDb(SQL, c) {
   const db = new SQL.Database();
@@ -45,6 +47,18 @@ initSqlJs().then((SQL) => {
     c.manual.forEach((m) => { if (!MANUAL[m]) fail('missing manual page ' + m); });
     // 4. hints exist
     if (!c.hints || c.hints.length < 3) fail('needs 3 hints');
+    // Russian version: same structure, example SQL in hints must run and find the culprit
+    const r = RU.cases[c.id];
+    if (!r) { fail('no Russian text'); continue; }
+    if (r.clues.length !== c.clues.length) fail('RU clue count differs');
+    if (r.briefing.length !== c.briefing.length) fail('RU briefing count differs');
+    if (r.hints.length !== c.hints.length) fail('RU hint count differs');
+    if (!!r.sites !== !!c.sites) fail('RU sites mismatch');
+    const hasExample = /^Try: /.test(c.hints[2]);
+    const ex = /^Пример: (.*)$/.exec(r.hints[2]);
+    if (hasExample && !ex) fail('RU hint 3 must be "Пример: <sql>"');
+    else if (ex) { const rr = db.exec(ex[1]); if (!rr.length || rr[0].values.length < 1) fail('RU example SQL returned nothing'); }
+    c.manual.forEach((m) => { if (!RU.manual[m]) fail('missing RU manual page ' + m); });
   }
   // case-specific sanity checks
   const c4 = CASES[3];
