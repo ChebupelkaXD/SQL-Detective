@@ -1,0 +1,7 @@
+{
+  "name": "sql-detective",
+  "version": "1.0.0",
+  "description": "A local, offline puzzle game about solving petty crimes with SQL",
+  "private": true,
+  "scripts": { "test": "node tests/verify-cases.js" }
+}
