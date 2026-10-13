@@ -11,6 +11,31 @@ from PIL import Image
 def greenness(r, g, b):
     return g - max(r, b)
 
+def drop_specks(im):
+    """Remove tiny disconnected blobs (leftover thumbs, noise) so they can't stretch the crop box."""
+    w, h = im.size
+    px = im.load()
+    seen = [[0] * w for _ in range(h)]
+    comps = []
+    for sy in range(h):
+        for sx in range(w):
+            if px[sx, sy][3] and not seen[sy][sx]:
+                seen[sy][sx] = 1; q = deque([(sx, sy)]); cells = []
+                while q:
+                    x, y = q.popleft(); cells.append((x, y))
+                    for dx in (-1, 0, 1):
+                        for dy in (-1, 0, 1):
+                            nx, ny = x + dx, y + dy
+                            if 0 <= nx < w and 0 <= ny < h and px[nx, ny][3] and not seen[ny][nx]:
+                                seen[ny][nx] = 1; q.append((nx, ny))
+                comps.append(cells)
+    if comps:
+        big = max(len(c) for c in comps)
+        for c in comps:
+            if len(c) < big * 0.02:
+                for x, y in c: px[x, y] = (0, 0, 0, 0)
+    return im
+
 def key(path):
     im = Image.open(path).convert('RGBA')
     w, h = im.size
@@ -44,6 +69,7 @@ def key(path):
                 if near and greenness(r, g, b) > 10:
                     g = max(r, b)
                     px[x, y] = (r, g, b, 255)
+    im = drop_specks(im)
     box = im.getbbox()
     if box: im = im.crop(box)
     out = Path(path).with_suffix('.png')

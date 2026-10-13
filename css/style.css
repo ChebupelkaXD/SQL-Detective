@@ -153,7 +153,7 @@ table.data td.num { text-align: right; }
 .browser .page ul { line-height: 2; }
 
 /* ---------- assistant ---------- */
-#spud { position: absolute; right: 14px; bottom: -66px; width: 150px; z-index: 5001; cursor: pointer; transition: transform .15s; }
+#spud { position: absolute; right: 12px; bottom: -4px; width: 124px; z-index: 5001; cursor: pointer; transition: transform .15s; }
 #spud:hover { transform: translateY(-6px); }
 #spud svg { width: 100%; display: block; filter: drop-shadow(2px 2px 0 #0004); }
 #spud .peek { height: 88px; overflow: hidden; }
