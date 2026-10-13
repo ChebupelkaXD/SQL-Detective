@@ -501,8 +501,323 @@
     });
   })();
 
+  var BASE_MANUAL = ['basics', 'where', 'operators', 'order', 'group', 'join'];
+  // days after (y, m, d) as 'YYYY-MM-DD'
+  function ymd(y, m, d, off) {
+    var dt = new Date(Date.UTC(y, m - 1, d + off));
+    return dt.getUTCFullYear() + '-' + pad(dt.getUTCMonth() + 1) + '-' + pad(dt.getUTCDate());
+  }
+  function sum(a) { return a.reduce(function (x, y) { return x + y; }, 0); }
+
+  /* ------------------------------------------------------------------ CASE 7 — NULL */
+  (function () {
+    var rng = mulberry32(707);
+    var nm = Names(rng, ['Quentin', 'Fumblethorpe']);
+    var props = ['Golden Crown', 'Rubber Sword', 'Velvet Cape', 'Fake Moustache', 'Cardboard Castle', 'Plastic Skull'];
+    var people = [];
+    for (var i = 0; i < 12; i++) { var n = nm(); people.push([n[0], n[1], rng() < 0.35 ? null : '555-01' + int(rng, 10, 99)]); }
+    people[0][2] = null; people[1][2] = null; people[2][2] = '555-0123'; people[3][2] = '555-0188';
+    var culprit = ['Quentin', 'Fumblethorpe', null];
+    // row = [id, first, last, phone, prop, borrowed_on, returned_on]
+    var bad = function (r) { return r[3] === null && r[4] === 'Golden Crown' && r[6] === null; };
+    var rows = [];
+    people.forEach(function (p) {
+      var k = int(rng, 1, 3);
+      for (var j = 0; j < k; j++) {
+        rows.push(safeRow(function () {
+          var off = int(rng, 0, 70), keep = int(rng, 2, 7);
+          var open = rng() < 0.25;
+          return [0, p[0], p[1], p[2], pick(rng, props), ymd(2025, 3, 1, off), open ? null : ymd(2025, 3, 1, off + keep)];
+        }, bad));
+      }
+    });
+    // planted decoys and culprit
+    rows.push([0, people[0][0], people[0][1], null, 'Golden Crown', ymd(2025, 3, 1, 40), ymd(2025, 3, 1, 44)]);   // crown, no phone, but returned
+    rows.push([0, people[1][0], people[1][1], null, 'Rubber Sword', ymd(2025, 3, 1, 33), null]);                 // no phone, never returned, wrong prop
+    rows.push([0, people[2][0], people[2][1], people[2][2], 'Golden Crown', ymd(2025, 3, 1, 12), null]);         // crown never returned, but left a phone
+    rows.push([0, people[3][0], people[3][1], people[3][2], 'Golden Crown', ymd(2025, 3, 1, 55), null]);         // same
+    rows.push([0, 'Quentin', 'Fumblethorpe', null, 'Velvet Cape', ymd(2025, 3, 1, 5), ymd(2025, 3, 1, 8)]);      // culprit borrowed other stuff too
+    rows.push([0, 'Quentin', 'Fumblethorpe', null, 'Golden Crown', ymd(2025, 3, 1, 60), null]);                   // culprit
+    rows.sort(function (a, b) { return a[5] < b[5] ? -1 : a[5] > b[5] ? 1 : 0; });
+    var id = 1; rows.forEach(function (r) { r[0] = id++; });
+
+    CASES.push({
+      id: 7,
+      title: 'The Phantom of the Prop Room',
+      crime: 'Theft of the Golden Crown from a community theatre',
+      law: '12 LD PC 101(e)',
+      warrant: 'taking the <b>Golden Crown</b> prop from the prop room of the Dunhill Community Theatre and never bringing it back, violating <b>12 LD PC 101(e)</b> which prohibits <b>PETTY THEFT IN THE STATE OF LOS DATOS</b>.',
+      location: 'Dunhill Community Theatre',
+      manual: BASE_MANUAL.concat(['nulls']),
+      briefing: [
+        'Detective, opening night is tomorrow and the <b>Golden Crown</b> from the prop room has vanished. The director is walking in circles and whispering to a plastic skull.',
+        'The prop room keeps a <b>prop_checkouts</b> table. When someone brings a prop back, the date goes into <b>returned_on</b>. If they never brought it back… the cell stays <b>empty</b>. In SQL an empty cell is called <b>NULL</b>.',
+        'Careful: NULL is not zero and not an empty text. It means “nothing here”, and you can’t search for it with <b>=</b>. Your manual has a new chapter about it.'
+      ],
+      tables: {
+        prop_checkouts: { columns: ['checkout_id', 'first_name', 'last_name', 'phone', 'prop', 'borrowed_on', 'returned_on'], rows: rows }
+      },
+      clues: [
+        { title: 'director_rant', text: '<h3>The director’s rant</h3><p>“The Golden Crown was checked out and <b>never returned</b>. Not a word, not a postcard!”</p><p>“And whoever took it <b>left no phone number</b> on the sign-out sheet. Typical.”</p>' },
+        { title: 'signout_sheet', text: '<h3>Prop-room sign-out sheet</h3><p>Reminder pinned to the sheet: “<i>Props must be returned within a week. If you have not, you are a thief and also rude.</i>”</p><p>Spud’s note: blank cells show up as <b>NULL</b> in the tables. Search them with <b>IS NULL</b>, not with <b>= NULL</b>.</p>' }
+      ],
+      culprit: 'Quentin Fumblethorpe',
+      solution: "SELECT * FROM prop_checkouts WHERE prop = 'Golden Crown' AND returned_on IS NULL AND phone IS NULL",
+      hints: [
+        'Blank cells are NULL. Look at the whole table first and find them: SELECT * FROM prop_checkouts',
+        'Test for NULL with IS NULL (not = NULL), for example: WHERE returned_on IS NULL.',
+        "Try: SELECT * FROM prop_checkouts WHERE prop = 'Golden Crown' AND returned_on IS NULL AND phone IS NULL"
+      ]
+    });
+  })();
+
+  /* ------------------------------------------------------------------ CASE 8 — DISTINCT */
+  (function () {
+    var rng = mulberry32(808);
+    var nm = Names(rng, ['Marigold', 'Twinkletoes']);
+    var gates = ['North', 'South', 'East', 'West'];
+    var days = ['2025-07-04', '2025-07-05', '2025-07-06'];
+    var rows = [];
+    function scans(f, l, list, count) {
+      for (var k = 0; k < count; k++) rows.push([0, f, l, list[k < list.length ? k : int(rng, 0, list.length - 1)], pick(rng, days)]);
+    }
+    for (var i = 0; i < 12; i++) {
+      var n = nm();
+      var g1 = pick(rng, gates), g2 = pick(rng, gates);
+      scans(n[0], n[1], g1 === g2 || rng() < 0.4 ? [g1] : [g1, g2], int(rng, 2, 4));
+    }
+    var fan = nm();   // the biggest fan: most scans, but only two gates
+    scans(fan[0], fan[1], ['South', 'North'], 9);
+    var half = nm();  // another one with two gates
+    scans(half[0], half[1], ['East', 'West'], 4);
+    scans('Marigold', 'Twinkletoes', ['North', 'East', 'West', 'North', 'East'], 5);   // culprit: 3 different gates
+    rows.sort(function (a, b) { return a[4] < b[4] ? -1 : a[4] > b[4] ? 1 : 0; });
+    var id = 1; rows.forEach(function (r) { r[0] = id++; });
+
+    CASES.push({
+      id: 8,
+      title: 'Gate Crasher',
+      crime: 'Smuggling a giant plush bear out of the fair',
+      law: '12 LD PC 101(f)',
+      warrant: 'sneaking the grand prize, a <b>three-metre plush bear named Mr. Snuggles</b>, out of the Wobbly Wheel Fair, violating <b>12 LD PC 101(f)</b> which prohibits <b>PETTY THEFT IN THE STATE OF LOS DATOS</b>.',
+      location: 'Wobbly Wheel Fair',
+      manual: BASE_MANUAL.concat(['nulls', 'distinct']),
+      briefing: [
+        'The Wobbly Wheel Fair has lost its grand prize: a three-metre plush bear called Mr. Snuggles. Nobody saw it leave. It is a very big bear.',
+        'The fair keeps a <b>gate_scans</b> table: every time a wristband is scanned at one of the four gates, a row is added.',
+        'The guards think the thief kept walking in and out through <b>different gates</b> to confuse them. Counting rows won’t work (some people just love the fair). You need to count <b>different</b> gates. That’s a job for <b>DISTINCT</b>.'
+      ],
+      tables: {
+        gate_scans: { columns: ['scan_id', 'first_name', 'last_name', 'gate', 'scan_day'], rows: rows }
+      },
+      clues: [
+        { title: 'guard_report', text: '<h3>Guard report</h3><p>“Somebody’s wristband kept turning up at <b>different gates</b>. I’d say they used <b>at least 3 different gates</b> over the weekend. Sneaky.”</p>' },
+        { title: 'ticket_booth_note', text: '<h3>Note from the ticket booth</h3><p>“Warning: lots of people love our fair and come back again and again, always through the <b>same gate</b>. Whoever has the most scans overall is probably just a fan.”</p><p>“Count the <b>different gates</b>, not the visits.”</p>' }
+      ],
+      culprit: 'Marigold Twinkletoes',
+      solution: 'SELECT first_name, last_name, COUNT(DISTINCT gate) AS gates_used FROM gate_scans GROUP BY first_name, last_name HAVING COUNT(DISTINCT gate) >= 3',
+      hints: [
+        'First find out which gates exist: SELECT DISTINCT gate FROM gate_scans',
+        'Group the scans by person and count the different gates each one used: COUNT(DISTINCT gate).',
+        'Try: SELECT first_name, last_name, COUNT(DISTINCT gate) AS gates_used FROM gate_scans GROUP BY first_name, last_name HAVING COUNT(DISTINCT gate) >= 3'
+      ]
+    });
+  })();
+
+  /* ------------------------------------------------------------------ CASE 9 — SUM / AVG / MIN / MAX */
+  (function () {
+    var rng = mulberry32(909);
+    var nm = Names(rng, ['Rupert', 'Pennywhistle']);
+    var shops = ['Candy Corner', 'Toy Barn', 'Comic Cave', 'Ice Cream Hut', 'Book Nook'];
+    function series(n, lo, hi) { var a = []; for (var i = 0; i < n; i++) a.push(int(rng, lo, hi)); return a; }
+    function retry(make, ok) { for (var i = 0; i < 2000; i++) { var a = make(); if (ok(a)) return a; } throw new Error('series'); }
+    function min(a) { return Math.min.apply(null, a); }
+    function max(a) { return Math.max.apply(null, a); }
+    function matches(a) { return sum(a) > 300 && sum(a) / a.length < 15 && min(a) >= 5 && max(a) < 30; }
+    var spenders = []; // [first, last, amounts]
+    var cul = retry(function () { var a = series(25, 5, 24); a[0] = 29; return a; }, matches);
+    var d1 = [85, 70, 60, 45, 40, 30];                                                              // big total, but huge single purchases
+    var d2 = retry(function () { var a = series(28, 1, 25); a[0] = 2; return a; }, function (a) { return sum(a) > 300 && sum(a) / a.length < 15 && max(a) < 30; }); // tiny purchase present
+    var d3 = retry(function () { return series(12, 24, 29); }, function (a) { return sum(a) > 300; });                                                                   // average too high (everything else fits)
+    var d4 = series(24, 5, 14);                                                                      // total too low
+    var d5 = retry(function () { var a = series(28, 5, 15); a[0] = 55; return a; }, function (a) { return sum(a) > 300 && sum(a) / a.length < 15; });                  // one big splurge, otherwise perfect
+    [d1, d2, d3, d4, d5].forEach(function (a) { var n = nm(); spenders.push([n[0], n[1], a]); });
+    for (var i = 0; i < 9; i++) { var n = nm(); spenders.push([n[0], n[1], series(int(rng, 3, 7), 3, 45)]); }
+    spenders.forEach(function (s) { if (matches(s[2])) s[2].push(60); });                           // never a second culprit
+    spenders.push(['Rupert', 'Pennywhistle', cul]);
+    var rows = [];
+    spenders.forEach(function (s) { s[2].forEach(function (a) { rows.push([0, s[0], s[1], pick(rng, shops), a]); }); });
+    shuffle(rng, rows);
+    var id = 1; rows.forEach(function (r) { r[0] = id++; });
+
+    CASES.push({
+      id: 9,
+      title: 'The Piggy Bank Burglar',
+      crime: 'Emptying a school piggy bank and spending it in town',
+      law: '12 LD PC 101(g)',
+      warrant: 'stealing the contents of the Dunhill Elementary fundraiser piggy bank and spending it in small, sneaky amounts all over town, violating <b>12 LD PC 101(g)</b> which prohibits <b>PETTY THEFT IN THE STATE OF LOS DATOS</b>.',
+      location: 'Dunhill Elementary School',
+      manual: BASE_MANUAL.concat(['nulls', 'distinct', 'aggregates']),
+      briefing: [
+        'The big fundraiser piggy bank at Dunhill Elementary was emptied overnight. Since then somebody has been spending the money all over town. Carefully.',
+        'The <b>purchases</b> table lists everything bought in the town’s five little shops with the marked coins. Your manual has new tools: <b>SUM</b>, <b>AVG</b>, <b>MIN</b> and <b>MAX</b>.',
+        'They are called “aggregate functions”: they squash many rows into one number. Together with <b>GROUP BY</b> you get one number per person.'
+      ],
+      tables: {
+        purchases: { columns: ['purchase_id', 'first_name', 'last_name', 'shop', 'amount'], rows: rows }
+      },
+      clues: [
+        { title: 'shopkeeper_summary', text: '<h3>Summary from the shopkeepers</h3><p>“Whoever it is, they spent <b>more than $300 in total</b>. But they never splashed out: <b>no single purchase of $30 or more</b>. And they always spend a bit: <b>nothing under $5</b>.”</p>' },
+        { title: 'accountant_note', text: '<h3>Note from the school accountant</h3><p>“The <b>average purchase is under $15</b>. Lots of small purchases that add up. Some people spend big on one thing; this thief nibbled.”</p>' }
+      ],
+      culprit: 'Rupert Pennywhistle',
+      solution: 'SELECT first_name, last_name, SUM(amount) AS total, AVG(amount) AS average, MIN(amount) AS smallest, MAX(amount) AS biggest FROM purchases GROUP BY first_name, last_name HAVING SUM(amount) > 300 AND AVG(amount) < 15 AND MIN(amount) >= 5 AND MAX(amount) < 30',
+      hints: [
+        'Total, average, smallest and biggest purchase per person: SELECT first_name, last_name, SUM(amount), AVG(amount), MIN(amount), MAX(amount) FROM purchases GROUP BY first_name, last_name',
+        'Filter the groups with HAVING (not WHERE): HAVING SUM(amount) > 300 AND … one condition for each clue.',
+        'Try: SELECT first_name, last_name, SUM(amount) AS total, AVG(amount) AS average, MIN(amount) AS smallest, MAX(amount) AS biggest FROM purchases GROUP BY first_name, last_name HAVING SUM(amount) > 300 AND AVG(amount) < 15 AND MIN(amount) >= 5 AND MAX(amount) < 30'
+      ]
+    });
+  })();
+
+  /* ------------------------------------------------------------------ CASE 10 — LEFT JOIN */
+  (function () {
+    var rng = mulberry32(1010);
+    var nm = Names(rng, ['Barbara', 'Spoonbender']);
+    var depts = ['Teaching', 'Cafeteria', 'Janitorial', 'Office', 'Library'];
+    var staff = [];
+    for (var i = 0; i < 17; i++) { var n = nm(); staff.push([i + 1, n[0], n[1], pick(rng, depts), rng() < 0.5 ? 'Yes' : 'No']); }
+    staff.push([18, 'Barbara', 'Spoonbender', 'Cafeteria', 'Yes']);   // culprit
+    function set(id, dept, key) { staff[id - 1][3] = dept; staff[id - 1][4] = key; }
+    set(3, 'Cafeteria', 'Yes');   // matches the clues but badged in
+    set(6, 'Cafeteria', 'No');    // cafeteria, no key, not in log
+    set(9, 'Teaching', 'Yes');    // key, not in log, wrong department
+    set(12, 'Janitorial', 'Yes'); // same
+    var notLogged = { 6: 1, 9: 1, 12: 1, 18: 1 };
+    var logged = {};
+    staff.forEach(function (s) { if (!notLogged[s[0]] && (s[0] === 3 || rng() < 0.55)) logged[s[0]] = 1; });
+    staff.forEach(function (s) { // nobody else may fit "cafeteria + key + missing from the log"
+      if (s[0] !== 18 && s[3] === 'Cafeteria' && s[4] === 'Yes') logged[s[0]] = 1;
+    });
+    var log = [];
+    Object.keys(logged).forEach(function (sid) {
+      var k = int(rng, 1, 2);
+      for (var j = 0; j < k; j++) log.push([0, +sid, hhmm(int(rng, 18 * 60, 23 * 60 + 30))]);
+    });
+    log.sort(function (a, b) { return a[2] < b[2] ? -1 : a[2] > b[2] ? 1 : 0; });
+    var id = 1; log.forEach(function (r) { r[0] = id++; });
+
+    CASES.push({
+      id: 10,
+      title: 'The Missing Trophy',
+      crime: 'Theft of the school spelling-bee trophy',
+      law: '33 LD PC 503',
+      warrant: 'stealing the <b>Golden Spelling Bee Trophy</b> from the display case of Dunhill Elementary overnight, violating <b>33 LD PC 503</b> which prohibits <b>THEFT OF PUBLIC PROPERTY IN THE STATE OF LOS DATOS</b>.',
+      location: 'Dunhill Elementary School',
+      manual: BASE_MANUAL.concat(['nulls', 'distinct', 'aggregates', 'leftjoin']),
+      briefing: [
+        'The Golden Spelling Bee Trophy has vanished from Dunhill Elementary overnight. The principal spelled “dissapointed” wrong in her press statement. Twice.',
+        'Two tables: <b>staff</b> (everyone who works at the school) and <b>night_badges</b> (who badged in at the front door last night).',
+        'This time the culprit is the one who is <b>missing</b> from the log. A normal JOIN throws away people with no match. You need <b>LEFT JOIN</b>: it keeps everyone from the left table and fills the empty spots with NULL.'
+      ],
+      tables: {
+        staff: { columns: ['staff_id', 'first_name', 'last_name', 'department', 'has_key'], rows: staff },
+        night_badges: { columns: ['badge_id', 'staff_id', 'badged_at'], rows: log }
+      },
+      clues: [
+        { title: 'principal_statement', text: '<h3>Statement — the Principal</h3><p>“The thief had a <b>key to the building</b>. Also, I found a <b>hairnet</b> on the floor, so it must be someone from the <b>Cafeteria</b>.”</p>' },
+        { title: 'security_note', text: '<h3>Note from security</h3><p>“The front door logs every badge. But the thief used the back door, so they are <b>not in last night’s log</b> at all. The back door has no badge reader. We are getting one.”</p>' }
+      ],
+      culprit: 'Barbara Spoonbender',
+      solution: "SELECT s.first_name, s.last_name FROM staff s LEFT JOIN night_badges n ON s.staff_id = n.staff_id WHERE n.badge_id IS NULL AND s.has_key = 'Yes' AND s.department = 'Cafeteria'",
+      hints: [
+        'You need staff who have NO row in night_badges. A normal JOIN drops them, so use LEFT JOIN staff … ON …',
+        'After a LEFT JOIN, people without a match have NULL in the badge columns: WHERE n.badge_id IS NULL.',
+        "Try: SELECT * FROM staff s LEFT JOIN night_badges n ON s.staff_id = n.staff_id WHERE n.badge_id IS NULL AND s.has_key = 'Yes' AND s.department = 'Cafeteria'"
+      ]
+    });
+  })();
+
+  /* ------------------------------------------------------------------ CASE 11 — dates */
+  (function () {
+    var rng = mulberry32(1111);
+    var nm = Names(rng, ['Gideon', 'Wobblethwaite']);
+    var tools = ['Hedge Trimmer', 'Power Drill', 'Ladder', 'Wheelbarrow', 'Pressure Washer', 'Lawn Mower'];
+    var people = [];
+    for (var i = 0; i < 12; i++) people.push(nm());
+    function ts(s) { var p = s.split('-'); return Date.UTC(+p[0], +p[1] - 1, +p[2]); }
+    function bad(r) { // r = [id, first, last, tool, borrowed, returned]
+      var kept = (ts(r[5]) - ts(r[4])) / 86400000;
+      return r[3] === 'Hedge Trimmer' && r[4].slice(5, 7) === '06' && kept > 10 && new Date(ts(r[5])).getUTCDay() === 6;
+    }
+    var rows = [];
+    function mk() {
+      var p = pick(rng, people), off = int(rng, 0, 80), keep = int(rng, 2, 20);
+      return [0, p[0], p[1], pick(rng, tools), ymd(2025, 5, 10, off), ymd(2025, 5, 10, off + keep)];
+    }
+    for (var j = 0; j < 38; j++) rows.push(safeRow(mk, bad));
+    var P = function (idx, tool, b, r) { return [0, people[idx][0], people[idx][1], tool, b, r]; };
+    rows.push(['x', 'Gideon', 'Wobblethwaite', 'Hedge Trimmer', '2025-06-12', '2025-06-28']);   // culprit: June, 16 days, Saturday
+    rows.push(P(2, 'Hedge Trimmer', '2025-06-10', '2025-06-29'));   // June, 19 days, but Sunday
+    rows.push(P(5, 'Hedge Trimmer', '2025-06-20', '2025-06-21'));   // June, Saturday, but 1 day
+    rows.push(P(7, 'Hedge Trimmer', '2025-05-20', '2025-05-31'));   // Saturday, 11 days, but May
+    rows.push(P(9, 'Power Drill', '2025-06-05', '2025-06-21'));     // everything fits except the tool
+    rows.push(P(1, 'Hedge Trimmer', '2025-06-25', '2025-07-05'));   // June, Saturday, only 10 days (not more than 10)
+    rows.sort(function (a, b) { return a[4] < b[4] ? -1 : a[4] > b[4] ? 1 : 0; });
+    var id = 1; rows.forEach(function (r) { r[0] = id++; });
+
+    CASES.push({
+      id: 11,
+      title: 'The Hedge Trimmer Mystery',
+      crime: 'Keeping a borrowed hedge trimmer far too long',
+      law: '12 LD PC 108',
+      warrant: 'borrowing the only <b>Hedge Trimmer</b> of the Dunhill Tool Library, keeping it far beyond the lending period and using it to turn the town hedge into a sculpture of the mayor, violating <b>12 LD PC 108</b> which prohibits <b>MISUSE OF BORROWED PROPERTY IN THE STATE OF LOS DATOS</b>.',
+      location: 'Dunhill Tool Library',
+      manual: BASE_MANUAL.concat(['nulls', 'distinct', 'aggregates', 'leftjoin', 'dates']),
+      briefing: [
+        'Detective, the town hedge outside City Hall has been trimmed into a remarkably accurate sculpture of the mayor. The mayor is not flattered. The only hedge trimmer in town belongs to the Dunhill Tool Library.',
+        'The <b>tool_loans</b> table has two dates for every loan: <b>borrowed_on</b> and <b>returned_on</b>. Dates are written as text like <b>2025-06-28</b>: year, month, day. That order is on purpose, it sorts correctly.',
+        'New chapter in your manual: <b>dates</b>. <b>strftime</b> picks out the month or the day of the week, and <b>julianday</b> lets you subtract one date from another.'
+      ],
+      tables: {
+        tool_loans: { columns: ['loan_id', 'first_name', 'last_name', 'tool', 'borrowed_on', 'returned_on'], rows: rows }
+      },
+      clues: [
+        { title: 'librarian_log', text: '<h3>Tool Librarian’s log</h3><p>“The hedge trimmer was borrowed <b>in June</b> and kept for <b>more than 10 days</b>. The rule is 7 days. I put the rule on a very large poster.”</p>' },
+        { title: 'return_slip', text: '<h3>Return slip</h3><p>“The trimmer came back covered in leaves on a <b>Saturday</b>. We are closed on Sundays, and the thief obviously knew that.”</p><p>Spud’s note: <b>strftime(\'%w\', date)</b> gives the day of the week: 0 is Sunday, 6 is Saturday.</p>' }
+      ],
+      culprit: 'Gideon Wobblethwaite',
+      solution: "SELECT * FROM tool_loans WHERE tool = 'Hedge Trimmer' AND strftime('%m', borrowed_on) = '06' AND julianday(returned_on) - julianday(borrowed_on) > 10 AND strftime('%w', returned_on) = '6'",
+      hints: [
+        "Start with the tool: WHERE tool = 'Hedge Trimmer'. Then handle each date clue on its own.",
+        "Month: strftime('%m', borrowed_on) = '06'. Days kept: julianday(returned_on) - julianday(borrowed_on) > 10. Weekday: strftime('%w', returned_on) = '6'.",
+        "Try: SELECT * FROM tool_loans WHERE tool = 'Hedge Trimmer' AND strftime('%m', borrowed_on) = '06' AND julianday(returned_on) - julianday(borrowed_on) > 10 AND strftime('%w', returned_on) = '6'"
+      ]
+    });
+  })();
+
   /* ------------------------------------------------------------------ MANUAL */
   var MANUAL = {
+    nulls: {
+      title: 'NULL, IS NULL',
+      html: '<p>A <b>NULL</b> is an <i>empty</i> cell: “nothing here”. It is not zero and not an empty text.</p><p>You <b>cannot</b> find NULLs with <b>=</b>:</p><pre>WHERE returned_on = NULL   -- finds NOTHING!</pre><p>Use <b>IS NULL</b> and <b>IS NOT NULL</b>:</p><pre>SELECT *\nFROM prop_checkouts\nWHERE returned_on IS NULL\n  AND phone IS NOT NULL</pre><p>(Why? NULL means “unknown”, and “is unknown equal to unknown?” is… unknown.)</p>'
+    },
+    distinct: {
+      title: 'DISTINCT',
+      html: '<p><b>DISTINCT</b> removes duplicate rows from the result:</p><pre>SELECT DISTINCT gate\nFROM gate_scans</pre><p>Inside COUNT it counts only <i>different</i> values:</p><pre>SELECT first_name, last_name,\n  COUNT(*) AS scans,\n  COUNT(DISTINCT gate) AS gates_used\nFROM gate_scans\nGROUP BY first_name, last_name</pre><p><b>COUNT(*)</b> counts all rows; <b>COUNT(DISTINCT gate)</b> counts how many <i>different</i> gates there are.</p>'
+    },
+    aggregates: {
+      title: 'SUM, AVG, MIN, MAX',
+      html: '<p><b>Aggregate functions</b> squash many rows into one number:</p><pre>SUM(amount)   -- total\nAVG(amount)   -- average\nMIN(amount)   -- smallest\nMAX(amount)   -- biggest</pre><p>With GROUP BY you get one result per group:</p><pre>SELECT first_name, last_name,\n  SUM(amount) AS total,\n  MAX(amount) AS biggest\nFROM purchases\nGROUP BY first_name, last_name\nHAVING SUM(amount) > 300</pre><p>Filter on these numbers with <b>HAVING</b>, not WHERE. <b>ROUND(AVG(amount), 1)</b> tidies up long decimals.</p>'
+    },
+    leftjoin: {
+      title: 'LEFT JOIN',
+      html: '<p>A normal <b>JOIN</b> keeps only rows that have a partner in the other table. <b>LEFT JOIN</b> keeps <i>every</i> row of the left table; where there is no partner, the right-hand columns are <b>NULL</b>:</p><pre>SELECT s.first_name, n.badged_at\nFROM staff s\nLEFT JOIN night_badges n\n  ON s.staff_id = n.staff_id</pre><p>Trick: to find rows <b>without</b> a partner, add IS NULL:</p><pre>... LEFT JOIN night_badges n ON s.staff_id = n.staff_id\nWHERE n.badge_id IS NULL</pre><p>“Everyone from staff who never appears in night_badges.”</p>'
+    },
+    dates: {
+      title: 'Dates',
+      html: '<p>Dates are written as text: <b>\'2025-06-28\'</b> (year-month-day). That order sorts correctly, and BETWEEN works:</p><pre>WHERE borrowed_on BETWEEN \'2025-06-01\' AND \'2025-06-30\'</pre><p><b>strftime</b> extracts a part of a date:</p><pre>strftime(\'%Y\', d)  -- year    2025\nstrftime(\'%m\', d)  -- month   06\nstrftime(\'%d\', d)  -- day     28\nstrftime(\'%w\', d)  -- weekday 0=Sun … 6=Sat</pre><p>The result is <i>text</i>, so compare with quotes: <b>strftime(\'%m\', d) = \'06\'</b>.</p><p>To subtract dates use <b>julianday</b> (it turns a date into a day number):</p><pre>julianday(returned_on) - julianday(borrowed_on)</pre>'
+    },
     basics: {
       title: 'SELECT & FROM',
       html: '<p>A <b>table</b> is a grid: columns are the kinds of information, rows are the records.</p><p>To look at a table you ask a question in SQL:</p><pre>SELECT *\nFROM residents</pre><p><b>SELECT</b> says which columns you want. The star <b>*</b> means “all of them”. <b>FROM</b> says which table.</p><p>You can pick columns by name:</p><pre>SELECT first_name, last_name\nFROM residents</pre><p>Tip: double-click a row in a table window to open that person’s file!</p>'
