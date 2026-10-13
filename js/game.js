@@ -378,9 +378,14 @@
       b.appendChild(list);
     }, { w: 360, h: 220, x: 215, y: 60 });
   }
+  // case id -> art per clue index (null = text only); titles are localized so they can't be used as keys
+  const CLUE_ART = { 1: ['gnome.png', 'footprint.jpg'], 2: ['fridge.jpg'], 3: ['hotel_cctv.jpg'], 4: [null, 'bakery_cctv.jpg'], 5: [null, 'library.jpg'], 6: ['parking_meter.jpg'] };
   function openClue(i) {
     const cl = C().clues[i];
-    openWin('clue:' + i, cl.title, (b) => { b.innerHTML = '<div class="paper">' + cl.text + '</div>'; }, { nob: true, w: 480, h: 290, x: 250 + i * 40, y: 120 + i * 30 });
+    const art = (CLUE_ART[G.c.id] || [])[i];
+    // assets/<name> is optional: if the file is missing the image removes itself and only the text stays.
+    const pic = art ? '<img class="clue-img" src="assets/' + art + '" alt="" onerror="this.remove()">' : '';
+    openWin('clue:' + i, cl.title, (b) => { b.innerHTML = '<div class="paper">' + pic + cl.text + '</div>'; }, { nob: true, w: 480, h: art ? 520 : 290, x: 250 + i * 40, y: art ? 40 + i * 20 : 120 + i * 30 });
   }
   function openManual() {
     openWin('manual', t('w_manual'), (b) => {
@@ -581,10 +586,15 @@
     const sc = el('div', { className: 'arrest-screen' });
     sc.appendChild(el('h1', {}, t('arrested')));
     const pos = [[20, 150, -8], [150, 420, 4], [1060, 130, 6], [1000, 380, -4], [30, 480, 3], [1100, 520, -3]];
-    pos.forEach((p) => { const cop = el('div', { className: 'cop', style: 'left:' + p[0] + 'px;top:' + p[1] + 'px;transform:rotate(' + p[2] + 'deg);animation-delay:' + (Math.random()).toFixed(2) + 's' }, CH.spud('happy')); sc.appendChild(cop); });
+    pos.forEach((p) => { const cop = el('div', { className: 'cop', style: 'left:' + p[0] + 'px;top:' + p[1] + 'px;transform:rotate(' + p[2] + 'deg);animation-delay:' + (Math.random()).toFixed(2) + 's' }, CH.spudFull('happy')); sc.appendChild(cop); });
     const cols = ['#ff5370', '#ffee77', '#6fff8a', '#66c8ff', '#d28bff'];
     for (let i = 0; i < 14; i++) sc.appendChild(el('div', { className: 'balloon', style: 'left:' + (60 + Math.random() * 1120) + 'px;background:' + cols[i % cols.length] + ';animation-duration:' + (6 + Math.random() * 6).toFixed(1) + 's;animation-delay:' + (-Math.random() * 8).toFixed(1) + 's' }));
-    sc.appendChild(el('div', { className: 'culprit' }, CH.person(CH.lookFor(row), { jumpsuit: true }) + '<div class="nm">' + esc(G.c.culprit) + '</div>'));
+    const svgCulprit = CH.person(CH.lookFor(row), { jumpsuit: true });
+    const prisoner = el('div', { className: 'culprit' }, '<div class="pic">' + svgCulprit + '</div><div class="nm">' + esc(G.c.culprit) + '</div>');
+    const photo = new Image(); photo.alt = ''; photo.className = 'potato-art';
+    photo.onload = () => { const pw = el('div', { className: 'pw' }, '<div class="badge-no">' + (10000 + (CH.hash(G.c.culprit) % 90000)) + '</div>'); pw.prepend(photo); $('.pic', prisoner).innerHTML = ''; $('.pic', prisoner).appendChild(pw); };
+    photo.src = 'assets/potato.png';
+    sc.appendChild(prisoner);
     sc.appendChild(el('div', { className: 'stats' }, '<div class="stars">' + '★'.repeat(stars) + '☆'.repeat(3 - stars) + '</div>' + t('solved_stats', esc(C().title), G.strikes, G.hints)));
     const btns = el('div', { className: 'btns' });
     const last = G.idx === CASES.length - 1;

@@ -79,7 +79,7 @@
   }
 
   /* Officer Spud: potato-shaped cop with a pig-like nose. */
-  function spud(mood) {
+  function spudSvg(mood) {
     var s = 'stroke="' + INK + '" stroke-width="5" stroke-linejoin="round" stroke-linecap="round"';
     var mouth = mood === 'happy' ? '<path d="M86 150 Q100 166 114 150" ' + s + ' fill="#ffb3a0"/>' : mood === 'sad' ? '<path d="M88 156 Q100 144 112 156" ' + s + ' fill="none"/>' : '<path d="M90 152 Q95 158 100 152 Q105 158 110 152" ' + s + ' fill="none"/>';
     return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 220" class="spud">' +
@@ -93,6 +93,14 @@
       mouth +
       '</svg>';
   }
+
+  /* Optional art: <img> from assets/, and if the file is missing it swaps itself for the SVG fallback. */
+  function art(file, svg) {
+    var fb = svg.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return '<img class="spud-art" src="assets/' + file + '" alt="" data-fb="' + fb + '" onerror="this.outerHTML=this.dataset.fb">';
+  }
+  function spud(mood) { return art('spud_head.png', spudSvg(mood)); }
+  function spudFull(mood) { return art('spud.png', spudSvg(mood)); }
 
   function ico(inner) { return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" class="ico">' + inner + '</svg>'; }
   var ICONS = {
@@ -110,6 +118,6 @@
     notepad: ico('<rect x="10" y="10" width="44" height="48" fill="#f6f0b8" stroke="#a89f3e" stroke-width="2.5"/><path d="M16 6v10M26 6v10M36 6v10M46 6v10" stroke="#555" stroke-width="3"/><path d="M16 28H48M16 36H48M16 44H36" stroke="#b5ab4d" stroke-width="2"/>')
   };
 
-  var api = { person: person, spud: spud, lookFor: lookFor, ICONS: ICONS, hash: hash };
+  var api = { person: person, spudFull: spudFull, spud: spud, lookFor: lookFor, ICONS: ICONS, hash: hash };
   root.SQLD_CHARS = api;
 })(typeof window !== 'undefined' ? window : globalThis);

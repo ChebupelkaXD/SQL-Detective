@@ -247,3 +247,16 @@ table.data td.num { text-align: right; }
 .mp-row:hover { background: #f3ebfb; }
 .mp-row.on { background: var(--navy); color: #fff; }
 .mp-row .n { opacity: .6; } .mp-row .md { font-size: 13px; opacity: .75; align-self: center; } .mp-row .du { text-align: right; font-family: var(--mono); font-size: 13px; align-self: center; }
+
+/* ---------- optional art from assets/ ---------- */
+.clue-img { display: block; width: 100%; max-height: 240px; object-fit: contain; border: 3px solid var(--ink); background: #fff; margin: 0 0 10px; }
+.arrest-screen .culprit .pic { display: flex; justify-content: center; background: var(--paper); }
+.arrest-screen .culprit .pw { position: relative; display: inline-block; }
+.arrest-screen .culprit .potato-art { display: block; height: 250px; width: auto; animation: sway 2.2s ease-in-out infinite; transform-origin: 50% 100%; }
+.arrest-screen .culprit .badge-no { position: absolute; left: 57%; top: 62%; width: 20%; text-align: center; font: bold 10px/1 var(--ui); color: #222; z-index: 1; }
+@keyframes sway { 50% { transform: rotate(2deg) translateY(-3px); } }
+
+.spud-art { width: 100%; display: block; }
+#spud .spud-art { filter: drop-shadow(2px 2px 0 #0004); }
+.book .pg .cv-badge .spud-art { width: 130%; margin-bottom: -30px; }
+.arrest-screen .cop .spud-art { width: 100%; }

@@ -17,7 +17,7 @@
   "build": {
     "appId": "local.sqldetective.game",
     "productName": "SQL Detective",
-    "files": ["index.html", "main.js", "css/**", "js/**", "build/icon.png"],
+    "files": ["index.html", "main.js", "css/**", "js/**", "assets/**", "build/icon.png"],
     "directories": { "output": "dist", "buildResources": "build" },
     "win": { "target": "portable", "icon": "build/icon.png" },
     "portable": { "artifactName": "SQL-Detective.exe" }
