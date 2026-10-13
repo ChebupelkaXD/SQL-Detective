@@ -796,6 +796,35 @@
     });
   })();
 
+  /* ------------------------------------------------------------------ SANDBOX (free play: every table of every case, no crime) */
+  var SANDBOX = (function () {
+    var tables = {};
+    CASES.forEach(function (c) { Object.keys(c.tables).forEach(function (k) { tables[k] = c.tables[k]; }); });
+    return {
+      id: 0,
+      sandbox: true,
+      title: 'Sandbox',
+      crime: 'Free play',
+      manual: CASES[CASES.length - 1].manual,
+      briefing: [
+        'Welcome to the <b>Sandbox</b>, Detective! No crime, no clock, no wrong arrests. Just you and every table in the Los Datos archive.',
+        'Open <b>search</b> and ask anything you like. All the tables from all the cases are here. Join them, count them, break them (gently).',
+        'Click me whenever you want an example query. I have plenty. Mostly about snacks.'
+      ],
+      tables: tables,
+      clues: [],
+      hints: [
+        'Try: SELECT * FROM residents WHERE shoe_size > 10 ORDER BY last_name',
+        'Try: SELECT hobby, COUNT(*) AS fans FROM people GROUP BY hobby ORDER BY fans DESC',
+        'Try: SELECT p.first_name, c.make, c.color FROM people p JOIN cars c ON c.owner_id = p.person_id WHERE c.color = \'Green\'',
+        'Try: SELECT prop, COUNT(*) AS loans, SUM(returned_on IS NULL) AS never_returned FROM prop_checkouts GROUP BY prop',
+        'Try: SELECT department, COUNT(*) AS people_count FROM staff GROUP BY department',
+        'Try: SELECT strftime(\'%w\', borrowed_on) AS weekday, COUNT(*) AS loans FROM tool_loans GROUP BY weekday ORDER BY loans DESC',
+        'Try: SELECT gate, COUNT(DISTINCT first_name || last_name) AS visitors FROM gate_scans GROUP BY gate'
+      ]
+    };
+  })();
+
   /* ------------------------------------------------------------------ MANUAL */
   var MANUAL = {
     nulls: {
@@ -844,7 +873,7 @@
     }
   };
 
-  var api = { CASES: CASES, MANUAL: MANUAL, mulberry32: mulberry32 };
+  var api = { CASES: CASES, MANUAL: MANUAL, SANDBOX: SANDBOX, mulberry32: mulberry32 };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.SQLD = api;
 })(typeof window !== 'undefined' ? window : globalThis);

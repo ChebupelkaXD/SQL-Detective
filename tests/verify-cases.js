@@ -2,7 +2,8 @@
 // Run:  node tests/verify-cases.js
 const path = require('path');
 const initSqlJs = require(path.join(__dirname, '..', 'js', 'sql-asm.js'));
-const { CASES, MANUAL } = require(path.join(__dirname, '..', 'js', 'cases.js'));
+const { CASES, MANUAL, SANDBOX } = require(path.join(__dirname, '..', 'js', 'cases.js'));
+const XRAY = require(path.join(__dirname, '..', 'js', 'xray.js'));
 globalThis.window = globalThis; require(path.join(__dirname, '..', 'js', 'i18n.js'));
 const RU = globalThis.SQLD_I18N.ru;
 
@@ -101,6 +102,32 @@ initSqlJs().then((SQL) => {
     const n = db11.exec('SELECT COUNT(*) FROM tool_loans WHERE ' + dc.filter((x) => x !== cnd).join(' AND '))[0].values[0][0];
     if (n < 2) fail('case 11: clue "' + cnd + '" excludes nobody');
   });
+
+  // sandbox: every example query runs on the merged database, RU examples match EN ones
+  const dbS = loadDb(SQL, SANDBOX);
+  const RU0 = RU.cases[0];
+  if (!RU0 || RU0.hints.length !== SANDBOX.hints.length || RU0.briefing.length !== SANDBOX.briefing.length) fail('sandbox: RU text missing or different');
+  SANDBOX.hints.forEach((h, i) => {
+    const m = /^Try: (.*)$/.exec(h), r = RU0 && /^Пример: (.*)$/.exec(RU0.hints[i]);
+    if (!m || !r) return fail('sandbox hint ' + (i + 1) + ' must be "Try: <sql>" / "Пример: <sql>"');
+    if (m[1] !== r[1]) fail('sandbox hint ' + (i + 1) + ': RU example differs from EN');
+    try { const res = dbS.exec(m[1]); if (!res.length || !res[0].values.length) fail('sandbox hint ' + (i + 1) + ' returned nothing'); } catch (e) { fail('sandbox hint ' + (i + 1) + ': ' + e.message); }
+  });
+  if (Object.keys(SANDBOX.tables).length !== CASES.reduce((n, c) => n + Object.keys(c.tables).length, 0)) fail('sandbox: table names collide between cases');
+  // X-ray: the last count must equal the number of rows the solution returns (for plain WHERE solutions)
+  CASES.forEach((c) => {
+    const a = XRAY.analyse(c.solution);
+    if (a.error) return;
+    const db = loadDb(SQL, c);
+    const counts = XRAY.countQueries(a).map((q) => db.exec(q)[0].values[0][0]);
+    const rows = /group by|limit/i.test(c.solution) ? null : db.exec(c.solution)[0].values.length;
+    if (rows != null && counts[counts.length - 1] !== rows) fail('x-ray: case ' + c.id + ' final count ' + counts[counts.length - 1] + ' != ' + rows);
+    for (let i = 1; i < counts.length; i++) if (counts[i] > counts[i - 1]) fail('x-ray: counts must not grow (case ' + c.id + ')');
+  });
+  const xr = XRAY.analyse("SELECT * FROM t WHERE a BETWEEN 1 AND 5 AND b LIKE '%and%' AND c IN (SELECT x FROM y WHERE p = 1 AND q = 2) ORDER BY a");
+  if (!xr.conds || xr.conds.length !== 3) fail('x-ray: BETWEEN / quotes / subquery split wrongly: ' + JSON.stringify(xr));
+  if (XRAY.analyse('SELECT * FROM t WHERE a = 1 OR b = 2').error !== 'or') fail('x-ray: OR must be refused');
+  if (XRAY.analyse('SELECT * FROM t').error !== 'none') fail('x-ray: no WHERE must be reported');
 
   if (failed) { console.error(`\n${failed} problem(s)`); process.exit(1); }
   console.log('\nAll cases OK');

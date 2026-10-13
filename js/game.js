@@ -1,7 +1,8 @@
 /* SQL Detective — game UI. Everything runs locally in the browser (SQLite via sql.js, asm build). */
 (function () {
   'use strict';
-  const { CASES, MANUAL } = window.SQLD;
+  const { CASES, MANUAL, SANDBOX } = window.SQLD;
+  const ACH = window.SQLD_ACH, XRAY = window.SQLD_XRAY;
   const CH = window.SQLD_CHARS;
 
   /* ------------------------------------------------------------ helpers */
@@ -31,13 +32,50 @@
   function loc(c) { const r = settings.lang === 'ru' && I18N.ru.cases[c.id]; return r ? Object.assign({}, c, r) : c; }
   function MN(k) { return (settings.lang === 'ru' && I18N.ru.manual[k]) || MANUAL[k]; }
   const C = () => loc(G.c);
-  let progress = store.get('progress', { done: {}, unlockAll: false });
+  const caseLabel = () => (G.c.sandbox ? t('taskbar_sandbox') : t('taskbar_case', G.c.id, C().title));
+  function freshProgress(src) {
+    const p = Object.assign({ done: {}, unlockAll: false }, src || {});
+    p.done = p.done || {}; p.ach = p.ach || {};
+    p.stats = Object.assign({ queries: 0, errors: 0, hints: 0, strikes: 0, sandboxQ: 0 }, p.stats);
+    return p;
+  }
+  let progress = freshProgress(store.get('progress', {}));
   function applyBg() {
     const w = window.SQLD_WALLPAPERS.find((x) => x.id === settings.bg) || window.SQLD_WALLPAPERS[0];
     ['#desktop', '#screen-cases'].forEach((q) => { const e = $(q); if (e) e.style.background = w.css; });
   }
   function saveSettings() { store.set('settings', settings); document.body.classList.toggle('crt', settings.crt); applyBg(); }
   function saveProgress() { store.set('progress', progress); }
+
+  /* ------------------------------------------------------------ achievements */
+  const achQueue = []; let achBusy = false;
+  function award(id) {
+    if (progress.ach[id]) return;
+    progress.ach[id] = Date.now(); saveProgress();
+    achQueue.push(id); if (!achBusy) nextAch();
+  }
+  function nextAch() {
+    const id = achQueue.shift();
+    if (!id) { achBusy = false; return; }
+    achBusy = true;
+    const d = ACH.find((a) => a.id === id);
+    const n = el('div', { className: 'ach-toast' }, '<div class="ico">' + d.icon + '</div><div><small>' + esc(t('ach_unlocked')) + '</small><b>' + esc(t('ach_' + id)) + '</b></div>');
+    stage.appendChild(n); sfx.ok();
+    setTimeout(() => { n.remove(); nextAch(); }, 3600);
+  }
+  // first successful use of an SQL feature
+  const SKILLS = [['s_join', /\bjoin\b/i], ['s_left', /\bleft\s+join\b/i], ['s_group', /\bgroup\s+by\b/i], ['s_sub', /\(\s*select\b/i], ['s_null', /\bis\s+(not\s+)?null\b/i],
+    ['s_distinct', /\bdistinct\b/i], ['s_aggr', /\b(sum|avg|min|max)\s*\(/i], ['s_dates', /\b(strftime|julianday)\s*\(/i]];
+  function noteQuery(q, ok) {
+    const st = progress.stats;
+    if (!ok) { st.errors++; if (st.errors >= 10) award('oops10'); saveProgress(); return; }
+    st.queries++; G.queries++;
+    if (G.c.sandbox) { st.sandboxQ++; if (st.sandboxQ >= 10) award('sandbox'); }
+    const plain = q.replace(/'(?:[^']|'')*'/g, "''");
+    SKILLS.forEach((k) => { if (k[1].test(plain)) award(k[0]); });
+    saveProgress();
+  }
+  function rankKey(n) { const T = CASES.length; return n >= T ? 'rank_4' : n >= T * 0.75 ? 'rank_3' : n >= T * 0.4 ? 'rank_2' : n >= 1 ? 'rank_1' : 'rank_0'; }
 
   /* ------------------------------------------------------------ sound */
   let actx = null;
@@ -103,15 +141,25 @@
   function resetDesktop() {
     wins = {}; zTop = 10; cascade = 0;
     winlayer.innerHTML = ''; taskbar.innerHTML = '';
-    taskbar.appendChild(el('div', { className: 'tcase' }, esc(t('taskbar_case', G.c.id, C().title))));
+    taskbar.appendChild(el('div', { className: 'tcase' }, esc(caseLabel())));
     taskbar.appendChild(el('div', { className: 'clock', id: 'clock' }, '9:41 AM'));
   }
   function focusWin(w) {
     w.el.style.zIndex = ++zTop; w.el.classList.remove('hidden');
     Object.keys(wins).forEach((k) => wins[k].btn.classList.toggle('active', wins[k] === w));
   }
+  function stopSpeech() { try { if (window.speechSynthesis) speechSynthesis.cancel(); } catch (e) { /* no speech */ } }
+  function sayAloud(text) {
+    try {
+      stopSpeech();
+      const u = new SpeechSynthesisUtterance(text.replace(/\s+/g, ' '));
+      u.lang = settings.lang === 'ru' ? 'ru-RU' : 'en-US'; u.rate = 1;
+      speechSynthesis.speak(u);
+    } catch (e) { /* no speech */ }
+  }
   function closeWin(id) {
     const w = wins[id]; if (!w) return;
+    if (id === 'messages') stopSpeech();
     w.el.remove(); w.btn.remove(); delete wins[id];
   }
   function openWin(id, title, build, opt) {
@@ -285,33 +333,76 @@
       const first = Object.keys(schema())[0];
       b.innerHTML =
         '<div class="q-wrap"><div class="editor"><pre></pre><textarea spellcheck="false" autocomplete="off" autocapitalize="off"></textarea></div>' +
-        '<div class="q-err hidden"></div>' +
-        '<div class="q-bar"><button class="btn" data-a="hist">' + esc(t('hist_btn')) + '</button>' +
+        '<div class="q-sug"></div><div class="q-err hidden"></div>' +
+        '<div class="q-bar"><button class="btn" data-a="hist">' + esc(t('hist_btn')) + '</button><button class="btn" data-a="xray">' + esc(t('xray_btn')) + '</button>' +
         '<label><input type="checkbox" data-a="save"> ' + esc(t('save_tbl')) + '</label><input type="text" data-a="sname" placeholder="' + esc(t('tbl_ph')) + '" maxlength="24">' +
         '<span class="grow"></span><button class="btn" data-a="go">' + esc(t('submit')) + '</button></div></div>';
-      const ta = $('textarea', b), pre = $('pre', b), err = $('.q-err', b), save = $('[data-a=save]', b), sname = $('[data-a=sname]', b);
+      const ta = $('textarea', b), pre = $('pre', b), err = $('.q-err', b), sug = $('.q-sug', b), save = $('[data-a=save]', b), sname = $('[data-a=sname]', b);
+      let hp = G.history.length, draft = '', sugList = [];
       const sync = () => { pre.innerHTML = highlight(ta.value); pre.scrollTop = ta.scrollTop; };
       ta.value = prefill || G.lastQuery || ('SELECT *\nFROM ' + first);
-      ta.addEventListener('input', () => { sync(); sfx.key(); });
+      ta.addEventListener('input', () => { sync(); sfx.key(); suggest(); });
+      ta.addEventListener('click', () => suggest()); ta.addEventListener('blur', () => { sug.innerHTML = ''; sugList = []; });
       ta.addEventListener('scroll', () => { pre.scrollTop = ta.scrollTop; });
-      ta.addEventListener('keydown', (e) => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); go(); } if (e.key === 'Tab') { e.preventDefault(); const s = ta.selectionStart; ta.value = ta.value.slice(0, s) + '  ' + ta.value.slice(ta.selectionEnd); ta.selectionStart = ta.selectionEnd = s + 2; sync(); } });
+      // autocomplete: a strip of suggestions for the word at the cursor (tables, columns, keywords)
+      function wordAtCursor() { const m = /([A-Za-z_][A-Za-z0-9_]*)$/.exec(ta.value.slice(0, ta.selectionStart)); return m ? m[1] : ''; }
+      function suggest() {
+        const w = wordAtCursor(); sugList = [];
+        if (w.length >= 2) {
+          const sc = schema(), names = [];
+          Object.keys(sc).forEach((tb) => { names.push(tb); sc[tb].forEach((c) => { if (names.indexOf(c) < 0) names.push(c); }); });
+          const lw = w.toLowerCase();
+          names.forEach((n) => { if (n.toLowerCase().indexOf(lw) === 0 && n.toLowerCase() !== lw) sugList.push(n); });
+          KW.forEach((k) => { if (k.indexOf(lw) === 0 && k !== lw && sugList.length < 12) sugList.push(k.toUpperCase()); });
+          sugList = sugList.slice(0, 7);
+        }
+        sug.innerHTML = '';
+        sugList.forEach((x, i) => {
+          const chip = el('span', { className: 'chip' + (i === 0 ? ' first' : '') }, esc(x));
+          chip.addEventListener('mousedown', (ev) => { ev.preventDefault(); accept(x); });
+          sug.appendChild(chip);
+        });
+        if (sugList.length) sug.appendChild(el('span', { className: 'sug-tip' }, esc(t('sug_hint'))));
+      }
+      function accept(word) {
+        const pos = ta.selectionStart, w = wordAtCursor();
+        ta.value = ta.value.slice(0, pos - w.length) + word + ta.value.slice(ta.selectionEnd);
+        ta.selectionStart = ta.selectionEnd = pos - w.length + word.length; sync(); suggest(); ta.focus();
+      }
+      ta.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); go(); return; }
+        if ((e.ctrlKey || e.metaKey) && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) { // walk through earlier queries
+          e.preventDefault();
+          if (hp === G.history.length) draft = ta.value;
+          hp = Math.max(0, Math.min(G.history.length, hp + (e.key === 'ArrowUp' ? -1 : 1)));
+          ta.value = hp === G.history.length ? draft : G.history[hp]; sync(); return;
+        }
+        if (e.key === 'Escape' && sugList.length) { sug.innerHTML = ''; sugList = []; return; }
+        if (e.key === 'Tab') {
+          e.preventDefault();
+          if (sugList.length) { accept(sugList[0]); return; }
+          const s = ta.selectionStart; ta.value = ta.value.slice(0, s) + '  ' + ta.value.slice(ta.selectionEnd); ta.selectionStart = ta.selectionEnd = s + 2; sync();
+        }
+      });
       function go() {
         err.classList.add('hidden');
         try {
           const out = runQuery(ta.value);
           G.lastQuery = ta.value;
           if (G.history[G.history.length - 1] !== ta.value) G.history.push(ta.value);
+          hp = G.history.length; noteQuery(out.q, true);
           if (save.checked) {
             const nmv = (sname.value || '').trim() || ('saved_' + (G.savedN + 1));
             if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(nmv)) throw { friendly: t('err_tblname') };
             if (schema()[nmv]) throw { friendly: t('err_exists', esc(nmv)) };
             try { G.db.run('CREATE TABLE ' + nmv + ' AS ' + out.q); } catch (e) { throw { friendly: explain(e.message, out.q) }; }
-            G.savedN++; addIcon('table', nmv, () => openTable(nmv)); save.checked = false; sname.value = '';
+            G.savedN++; addIcon('table', nmv, () => openTable(nmv)); save.checked = false; sname.value = ''; award('saver');
             toast(t('saved_toast', nmv), true);
           }
           showResults(out.res, out.q);
           sfx.ok();
         } catch (e) {
+          noteQuery('', false);
           err.innerHTML = '<b>' + esc(t('oops')) + '</b> ' + (e.friendly || esc(e.message || e)); err.classList.remove('hidden'); sfx.bad();
         }
       }
@@ -319,11 +410,34 @@
         const a = e.target.dataset && e.target.dataset.a;
         if (a === 'go') go();
         if (a === 'hist') openHistory(ta, sync);
+        if (a === 'xray') openXray(ta.value);
       });
       sync();
       setTimeout(() => ta.focus(), 50);
     }, { w: 640, h: 330, x: 330, y: 330 });
     if (prefill && wins.search) { const ta = $('textarea', wins.search.body); ta.value = prefill; ta.dispatchEvent(new Event('input')); }
+  }
+  function openXray(sql) {
+    const a = XRAY.analyse(sql);
+    closeWin('xray');
+    openWin('xray', t('w_xray'), (b) => {
+      b.innerHTML = '';
+      const paper = el('div', { className: 'paper xray' });
+      b.appendChild(paper);
+      if (a.error) { paper.innerHTML = '<p>' + t(a.error === 'or' ? 'xray_or' : a.error === 'none' ? 'xray_none' : 'xray_unsupported') + '</p>'; return; }
+      let counts;
+      try { counts = XRAY.countQueries(a).map((q) => G.db.exec(q)[0].values[0][0]); }
+      catch (e) { paper.innerHTML = '<p>' + explain(e.message || String(e), sql) + '</p>'; return; }
+      const max = Math.max(1, counts[0]);
+      let h = '<p>' + esc(t('xray_intro')) + '</p><div class="xr-rows">';
+      const row = (label, n, cls) => '<div class="xr-row ' + (cls || '') + '"><div class="xr-lbl">' + label + '</div><div class="xr-bar"><i style="width:' + Math.max(n ? 2 : 0, Math.round(n / max * 100)) + '%"></i></div><div class="xr-n">' + esc(rowsText(n)) + '</div></div>';
+      h += row('<i>' + esc(t('xray_start')) + '</i>', counts[0], 'start');
+      a.conds.forEach((c, i) => { h += row('<code>' + (i ? 'AND ' : 'WHERE ') + esc(c) + '</code>', counts[i + 1], counts[i + 1] === 0 ? 'zero' : ''); });
+      h += '</div>';
+      if (counts[counts.length - 1] === 0) h += '<p class="xr-note">' + t('xray_zero') + '</p>';
+      paper.innerHTML = h;
+    }, { nob: true, w: 640, h: 300, x: 340, y: 150 });
+    if (wins.xray && !a.error) award('xray');
   }
   function openHistory(ta, sync) {
     const w = openWin('history', t('w_history'), (b) => {
@@ -343,10 +457,12 @@
     openWin('messages', t('w_messages'), (b) => {
       let i = 0, typing = null;
       const paras = C().briefing;
-      b.innerHTML = '<div class="msg"><div class="face">' + CH.spud('happy') + '</div><div class="txt"><div class="body"></div><div class="nav"><span></span><button class="btn">' + esc(t('next')) + '</button></div></div></div>';
-      const body = $('.body', b), nav = $('.nav span', b), next = $('.nav button', b);
+      b.innerHTML = '<div class="msg"><div class="face">' + CH.spud('happy') + '</div><div class="txt"><div class="body"></div><div class="nav"><span></span><button class="btn" data-a="speak" title="' + esc(t('speak')) + '">🔊</button><button class="btn" data-a="next">' + esc(t('next')) + '</button></div></div></div>';
+      const body = $('.body', b), nav = $('.nav span', b), next = $('[data-a=next]', b), speak = $('[data-a=speak]', b);
+      if (!window.speechSynthesis) speak.style.display = 'none';
+      speak.addEventListener('click', () => { sfx.click(); if (speechSynthesis.speaking) stopSpeech(); else sayAloud(paras[i].replace(/<[^>]+>/g, '')); });
       function show() {
-        const full = paras[i]; let n = 0; clearInterval(typing);
+        const full = paras[i]; let n = 0; clearInterval(typing); stopSpeech();
         const plain = full.replace(/<[^>]+>/g, '');
         body.innerHTML = ''; nav.textContent = (i + 1) + ' / ' + paras.length;
         next.textContent = i === paras.length - 1 ? t('got_it') : t('next');
@@ -366,6 +482,18 @@
       });
       show();
     }, { nob: true, w: 640, h: 300, x: 300, y: 90 });
+  }
+  // sandbox: one icon instead of 17 table icons
+  function openTableList() {
+    openWin('tables', t('w_tables'), (b) => {
+      const list = el('div', { className: 'clue-list' });
+      Object.keys(schema()).forEach((tb) => {
+        const ic = el('div', { className: 'icon' }, CH.ICONS.table + '<span>' + esc(tb) + '</span>');
+        ic.addEventListener('click', () => { sfx.click(); openTable(tb); });
+        list.appendChild(ic);
+      });
+      b.appendChild(list);
+    }, { w: 560, h: 330, x: 215, y: 40 });
   }
   function openClues() {
     openWin('clues', t('i_clues'), (b) => {
@@ -458,7 +586,7 @@
         $('[data-a=shuffle]', b).classList.toggle('on', Music.shuffle); $('[data-a=repeat]', b).classList.toggle('on', Music.repeat);
         list.querySelectorAll('.mp-row').forEach((r) => r.classList.toggle('on', +r.dataset.i === Music.idx));
       };
-      const listener = () => { if (wins.music) refresh(); };
+      const listener = () => { if (wins.music) refresh(); if (Music.playing) award('dj'); };
       Music.onChange(listener);
       b.addEventListener('click', (e) => {
         const a = e.target.dataset && e.target.dataset.a; if (!a) return;
@@ -509,7 +637,7 @@
     Object.keys(wins).slice().forEach((id) => { if (id !== 'settings' && id.indexOf('tbl:') !== 0) closeWin(id); });
     Object.keys(wins).slice().forEach((id) => { if (id.indexOf('tbl:') === 0) closeWin(id); });
     buildIcons(); hideBubble();
-    const tc = $('.tcase', taskbar); if (tc) tc.textContent = t('taskbar_case', G.c.id, C().title);
+    const tc = $('.tcase', taskbar); if (tc) tc.textContent = caseLabel();
     if (wins.settings) { closeWin('settings'); openSettings(); }
   }
   function openSettings() {
@@ -517,26 +645,42 @@
       b.innerHTML = '<div class="paper" style="font:16px/2 var(--ui)"><label><input type="checkbox" data-s="sound"> ' + esc(t('s_sound')) + '</label><br><label><input type="checkbox" data-s="crt"> ' + esc(t('s_crt')) + '</label><br>' +
         '<label>' + esc(t('s_lang')) + ': <select data-s="lang"><option value="en">English</option><option value="ru">Русский</option></select></label><br>' +
         '<div class="bg-h">' + esc(t('s_bg')) + '</div><div class="swatches"></div>' +
-        '<button class="btn" data-a="unlock">' + esc(t('s_unlock')) + '</button> <button class="btn" data-a="reset">' + esc(t('s_reset')) + '</button></div>';
+        '<button class="btn" data-a="unlock">' + esc(t('s_unlock')) + '</button> <button class="btn" data-a="reset">' + esc(t('s_reset')) + '</button><br>' +
+        '<button class="btn" data-a="export">' + esc(t('s_export')) + '</button> <button class="btn" data-a="import">' + esc(t('s_import')) + '</button><input type="file" accept=".json,application/json" hidden data-s="file"></div>';
       $('[data-s=sound]', b).checked = settings.sound; $('[data-s=crt]', b).checked = settings.crt; $('[data-s=lang]', b).value = settings.lang;
       const sw = $('.swatches', b);
       window.SQLD_WALLPAPERS.forEach((w) => {
         const d = el('div', { className: 'swatch' + (settings.bg === w.id ? ' on' : ''), title: t('bg_' + w.id) });
         d.style.background = w.css;
-        d.addEventListener('click', () => { sfx.click(); settings.bg = w.id; saveSettings(); sw.querySelectorAll('.swatch').forEach((x) => x.classList.toggle('on', x === d)); });
+        d.addEventListener('click', () => { sfx.click(); if (settings.bg !== w.id) award('decorator'); settings.bg = w.id; saveSettings(); sw.querySelectorAll('.swatch').forEach((x) => x.classList.toggle('on', x === d)); });
         sw.appendChild(d);
       });
       b.addEventListener('change', (e) => {
         const k = e.target.dataset.s; if (!k) return;
+        if (k === 'file') {
+          const f = e.target.files && e.target.files[0]; if (!f) return;
+          const rd = new FileReader();
+          rd.onload = () => {
+            try { const d = JSON.parse(rd.result); if (!d || d.sqld !== 1 || typeof d.progress !== 'object') throw 0; progress = freshProgress(d.progress); saveProgress(); toast(t('import_ok'), true); }
+            catch (x) { toast(t('import_bad')); }
+          };
+          rd.readAsText(f); e.target.value = ''; return;
+        }
         if (k === 'lang') { setLang(e.target.value); return; }
         settings[k] = e.target.checked; saveSettings();
       });
       b.addEventListener('click', (e) => {
         const a = e.target.dataset.a;
         if (a === 'unlock') { progress.unlockAll = true; saveProgress(); toast(t('unlocked_toast'), true); }
-        if (a === 'reset' && confirm(t('reset_confirm'))) { progress = { done: {}, unlockAll: false }; saveProgress(); toast(t('reset_toast')); }
+        if (a === 'export') {
+          const url = URL.createObjectURL(new Blob([JSON.stringify({ sqld: 1, progress })], { type: 'application/json' }));
+          const dl = el('a', { href: url, download: 'sql-detective-progress.json' }); document.body.appendChild(dl); dl.click(); dl.remove(); setTimeout(() => URL.revokeObjectURL(url), 2000);
+          toast(t('export_done'), true);
+        }
+        if (a === 'import') $('[data-s=file]', b).click();
+        if (a === 'reset' && confirm(t('reset_confirm'))) { progress = freshProgress(); saveProgress(); toast(t('reset_toast')); }
       });
-    }, { nob: true, w: 460, h: 350, x: 400, y: 90 });
+    }, { nob: true, w: 460, h: 400, x: 400, y: 90 });
   }
 
   /* ------------------------------------------------------------ arrest */
@@ -565,7 +709,7 @@
         const people = allPeople();
         if (!people[key]) { fb.innerHTML = t('f_noperson', esc(inp.value.trim())); fb.classList.remove('hidden'); sfx.bad(); return; }
         if (key === norm(c.culprit)) { solved(people[key]); return; }
-        G.strikes++; fb.classList.add('hidden');
+        G.strikes++; progress.stats.strikes++; saveProgress(); if (G.strikes >= 3) award('stubborn'); fb.classList.add('hidden');
         const o = people[key];
         toast(t('wrong_toast', o.first_name + ' ' + o.last_name, G.strikes));
         sfx.bad(); sayAsSpud(t('spud_wrong') + (G.strikes >= 2 ? t('spud_wrong2') : ''));
@@ -582,6 +726,15 @@
     const prev = progress.done[G.c.id];
     progress.done[G.c.id] = { stars: Math.max(stars, prev ? prev.stars : 0) };
     saveProgress();
+    award('first_blood');
+    if (G.hints === 0) award('no_hints');
+    if (G.hints === 0 && G.strikes === 0) award('flawless');
+    if (G.queries >= 1 && G.queries <= 3) award('efficient');
+    if (Date.now() - G.started < 4 * 60000) award('quick_draw');
+    const solvedN = Object.keys(progress.done).length;
+    if (solvedN >= 6) award('rookie_grad');
+    if (solvedN >= CASES.length) award('all_cases');
+    if (CASES.every((c) => progress.done[c.id] && progress.done[c.id].stars === 3)) award('perfectionist');
     const ov = $('#overlay'); ov.className = 'on'; ov.innerHTML = '';
     const sc = el('div', { className: 'arrest-screen' });
     sc.appendChild(el('h1', {}, t('arrested')));
@@ -615,9 +768,11 @@
   function hideBubble() { bubble.classList.add('hidden'); }
   function giveHint() {
     const hs = C().hints;
-    if (G.hints < hs.length) G.hints++;
-    const h = hs[G.hints - 1];
-    let html = t('hint_label', G.hints, hs.length);
+    let n;
+    if (G.c.sandbox) { n = G.hints++ % hs.length + 1; } // free play: just cycle through the examples
+    else { if (G.hints < hs.length) { G.hints++; progress.stats.hints++; saveProgress(); } n = G.hints; }
+    const h = hs[n - 1];
+    let html = t('hint_label', n, hs.length);
     const m = /^(?:Try|Пример): (.*)$/.exec(h);
     html += m ? esc(t('hint_full')) + '<code>' + esc(m[1]) + '</code>' : esc(h);
     sayAsSpud(html);
@@ -636,25 +791,27 @@
     ic.addEventListener('click', () => { sfx.click(); fn(); });
     icons.appendChild(ic);
   }
-  function show(id) { ['screen-title', 'screen-cases', 'desktop'].forEach((s) => $('#' + s).classList.toggle('hidden', s !== id)); }
+  function show(id) { ['screen-title', 'screen-cases', 'screen-profile', 'desktop'].forEach((s) => $('#' + s).classList.toggle('hidden', s !== id)); }
 
   function buildIcons() {
     const c = G.c;
     icons.innerHTML = '';
-    addIcon('exit', t('i_exit'), () => { if (confirm(t('exit_confirm'))) showCases(); });
+    addIcon('exit', t('i_exit'), () => { if (c.sandbox || confirm(t('exit_confirm'))) showCases(); });
     addIcon('settings', t('i_settings'), openSettings);
     addIcon('messages', t('i_messages'), openMessages);
-    addIcon('clues', t('i_clues'), openClues);
+    if (!c.sandbox) addIcon('clues', t('i_clues'), openClues);
     addIcon('manual', t('i_manual'), openManual);
     if (c.sites) addIcon('web', t('i_web'), openBrowser);
     addIcon('music', t('i_music'), openMusic);
     addIcon('search', t('i_search'), () => openSearch());
-    Object.keys(schema()).forEach((tb) => addIcon('table', tb, () => openTable(tb)));
-    addIcon('arrest', t('i_arrest'), openArrest);
+    if (c.sandbox) addIcon('table', t('i_tables'), openTableList);
+    else Object.keys(schema()).forEach((tb) => addIcon('table', tb, () => openTable(tb)));
+    if (!c.sandbox) addIcon('arrest', t('i_arrest'), openArrest);
   }
-  function startCase(idx) {
-    const c = CASES[idx];
-    G = { idx, c, db: buildDb(c), history: [], lastQuery: '', strikes: 0, hints: 0, savedN: 0 };
+  function startCase(idx) { beginCase(CASES[idx], idx); }
+  function startSandbox() { beginCase(SANDBOX, -1); }
+  function beginCase(c, idx) {
+    G = { idx, c, db: buildDb(c), history: [], lastQuery: '', strikes: 0, hints: 0, savedN: 0, queries: 0, started: Date.now() };
     show('desktop'); hideBubble();
     resetDesktop();
     buildIcons();
@@ -680,7 +837,79 @@
       grid.appendChild(card);
     });
     s.appendChild(grid);
-    s.appendChild(el('button', { className: 'btn', style: 'margin-top:22px', on: { click: () => { sfx.click(); showTitle(); } } }, esc(t('back_title'))));
+    const row = el('div', { className: 'cases-btns' });
+    row.appendChild(el('button', { className: 'btn', on: { click: () => { sfx.click(); showTitle(); } } }, esc(t('back_title'))));
+    row.appendChild(el('button', { className: 'btn', on: { click: () => { sfx.click(); startSandbox(); } } }, esc(t('sandbox_btn'))));
+    const got = Object.keys(progress.ach).length;
+    row.appendChild(el('button', { className: 'btn', on: { click: () => { sfx.click(); showProfile(); } } }, esc(t('profile_btn')) + ' (' + got + '/' + ACH.length + ')'));
+    s.appendChild(row);
+  }
+
+  /* ------------------------------------------------------------ detective profile */
+  function culpritRow(c) {
+    const parts = c.culprit.split(' '), first = parts[0], last = parts.slice(1).join(' ');
+    for (const name of Object.keys(c.tables)) {
+      const T = c.tables[name], fi = T.columns.indexOf('first_name'), li = T.columns.indexOf('last_name');
+      if (fi < 0 || li < 0) continue;
+      const r = T.rows.find((x) => x[fi] === first && x[li] === last);
+      if (r) return rowObj(T.columns, r);
+    }
+    return null;
+  }
+  function mugshot(c) {
+    const row = culpritRow(c), no = 10000 + (CH.hash(c.culprit) % 90000);
+    const box = el('div', { className: 'mug-pic' }, row ? CH.person(CH.lookFor(row), { jumpsuit: true }) : '');
+    const img = new Image(); img.alt = ''; img.className = 'potato-art';
+    img.onload = () => { const pw = el('div', { className: 'pw' }, '<div class="badge-no">' + no + '</div>'); pw.prepend(img); box.innerHTML = ''; box.appendChild(pw); };
+    img.src = 'assets/potato.png';
+    return box;
+  }
+  function showProfile(tab) {
+    tab = tab || 'ach';
+    show('screen-profile');
+    const s = $('#screen-profile'), st = progress.stats;
+    const solvedN = Object.keys(progress.done).length;
+    const stars = Object.keys(progress.done).reduce((a, k) => a + progress.done[k].stars, 0);
+    s.innerHTML = '<h2>' + esc(t('prof_h')) + '</h2><p>' + esc(t('prof_sub')) + '</p>';
+    const stat = (label, val) => '<div class="pstat"><b>' + esc(String(val)) + '</b><span>' + esc(label) + '</span></div>';
+    s.appendChild(el('div', { className: 'pstats' },
+      '<div class="prank"><span>' + esc(t('prof_rank')) + '</span><b>' + esc(t(rankKey(solvedN))) + '</b></div>' +
+      stat(t('prof_cases'), solvedN + '/' + CASES.length) + stat(t('prof_stars'), stars + '/' + CASES.length * 3) + stat(t('prof_queries'), st.queries) +
+      stat(t('prof_errors'), st.errors) + stat(t('prof_hints'), st.hints) + stat(t('prof_strikes'), st.strikes)));
+    const tabs = el('div', { className: 'ptabs' });
+    [['ach', t('prof_tab_ach') + ' (' + Object.keys(progress.ach).length + '/' + ACH.length + ')'], ['arr', t('prof_tab_arrested') + ' (' + solvedN + '/' + CASES.length + ')']].forEach((x) => {
+      tabs.appendChild(el('button', { className: 'ptab' + (x[0] === tab ? ' on' : ''), on: { click: () => { sfx.click(); showProfile(x[0]); } } }, esc(x[1])));
+    });
+    s.appendChild(tabs);
+    const body = el('div', { className: 'pbody' });
+    if (tab === 'ach') {
+      const g = el('div', { className: 'ach-grid' });
+      ACH.forEach((a) => {
+        const on = progress.ach[a.id];
+        g.appendChild(el('div', { className: 'ach-card' + (on ? ' on' : '') }, '<div class="ico">' + (on ? a.icon : '🔒') + '</div><div><b>' + esc(t('ach_' + a.id)) + '</b><span>' + esc(t('ach_' + a.id + '_d')) + '</span></div>'));
+      });
+      body.appendChild(g);
+    } else {
+      const g = el('div', { className: 'mug-grid' });
+      CASES.forEach((c0) => {
+        const c = loc(c0), d = progress.done[c.id];
+        const card = el('div', { className: 'mug' + (d ? ' on' : '') });
+        if (d) {
+          card.appendChild(mugshot(c0));
+          card.appendChild(el('div', { className: 'mug-nm' }, esc(c0.culprit)));
+          card.appendChild(el('div', { className: 'mug-cs' }, esc(t('case_label', c.id)) + ' · ' + esc(c.title)));
+          card.appendChild(el('div', { className: 'mug-st' }, '★'.repeat(d.stars) + '☆'.repeat(3 - d.stars)));
+        } else {
+          card.appendChild(el('div', { className: 'mug-pic empty' }, '?'));
+          card.appendChild(el('div', { className: 'mug-nm' }, '— — —'));
+          card.appendChild(el('div', { className: 'mug-cs' }, esc(t('case_label', c.id)) + ' · ' + esc(t('prof_none'))));
+        }
+        g.appendChild(card);
+      });
+      body.appendChild(g);
+    }
+    s.appendChild(body);
+    s.appendChild(el('button', { className: 'btn', style: 'margin-top:14px', on: { click: () => { sfx.click(); showCases(); } } }, esc(t('prof_back'))));
   }
   function showTitle() {
     show('screen-title');

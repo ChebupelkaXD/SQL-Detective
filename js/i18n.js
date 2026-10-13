@@ -185,6 +185,24 @@
 
   /* ------------------------------------------------------------ Russian cases */
   var cases = {
+    0: {
+      title: 'Песочница',
+      crime: 'Свободная игра',
+      briefing: [
+        'Добро пожаловать в <b>Песочницу</b>, детектив! Ни преступления, ни времени, ни ложных арестов. Только вы и все таблицы архива Лос-Датос.',
+        'Откройте <b>поиск</b> и спрашивайте что угодно. Здесь все таблицы из всех дел. Соединяйте их, считайте, ломайте (аккуратно).',
+        'Кликните по мне, когда понадобится пример запроса. У меня их полно. В основном про закуски.'
+      ],
+      hints: [
+        'Пример: SELECT * FROM residents WHERE shoe_size > 10 ORDER BY last_name',
+        'Пример: SELECT hobby, COUNT(*) AS fans FROM people GROUP BY hobby ORDER BY fans DESC',
+        "Пример: SELECT p.first_name, c.make, c.color FROM people p JOIN cars c ON c.owner_id = p.person_id WHERE c.color = 'Green'",
+        'Пример: SELECT prop, COUNT(*) AS loans, SUM(returned_on IS NULL) AS never_returned FROM prop_checkouts GROUP BY prop',
+        'Пример: SELECT department, COUNT(*) AS people_count FROM staff GROUP BY department',
+        "Пример: SELECT strftime('%w', borrowed_on) AS weekday, COUNT(*) AS loans FROM tool_loans GROUP BY weekday ORDER BY loans DESC",
+        "Пример: SELECT gate, COUNT(DISTINCT first_name || last_name) AS visitors FROM gate_scans GROUP BY gate"
+      ]
+    },
     1: {
       title: 'Гном-одиночка',
       crime: 'Кража садового гнома',
